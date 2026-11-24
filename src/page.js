@@ -256,9 +256,8 @@ export function TokenHeatmapSection(props) {
         chinese,
         tooltip,
       }),
+      PlansCard({ t, plans: usage.plans ?? [], status: usage.status, plansReady: usage.plansReady }),
       ModelCard({ t, models: summary.models, selected, onSelect: setSelected })),
-
-    PlansCard({ t, plans: usage.plans ?? [], status: usage.status, plansReady: usage.plansReady }),
 
     h('div', { className: 'thm-note' },
       `${t('source')}${usage.updatedAt > 0 ? ` · ${t('updatedAt', { time: new Date(usage.updatedAt).toLocaleTimeString('zh-CN') })}` : ''}`),

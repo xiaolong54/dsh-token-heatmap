@@ -234,6 +234,9 @@ assert.ok(classes.includes('thm-month-grid'), 'one month grid rendered')
 assert.ok(classes.includes('thm-switch'), 'the month switcher rendered')
 assert.ok(classes.some(name => name.includes('thm-heatmap-card')), 'the heatmap card hugs its grid')
 assert.ok(classes.some(name => name.includes('thm-models-card')), 'the model card takes the rest of the row')
+assert.ok(classes.some(name => name.includes('thm-plans-card')), 'the plans card sits next to the heatmap')
+assert.ok(classes.includes('thm-plan-list'), 'the plans are listed')
+assert.ok(classes.includes('thm-plan-block'), 'the plan blocks rendered')
 
 const cells = classes.filter(name => name.startsWith('thm-cell')).length
 assert.ok(cells >= 28 && cells <= 42, `one month carries its own days (${cells})`)
@@ -256,6 +259,12 @@ assert.ok(futureRule[0].includes('box-shadow'), 'a day that has not happened yet
 const gridRule = artifact.match(/\.thm-weekday-row,\.thm-month-grid\{[^}]*\}/)
 assert.ok(gridRule !== null, 'the month grid has one rule')
 assert.ok(/max-width:2\d\dpx/.test(gridRule[0]), `the month grid stays compact (${gridRule[0]})`)
+
+// Many plans must not push the page apart: the list scrolls instead.
+const planListRule = artifact.match(/\.thm-plan-list\{[^}]*\}/)
+assert.ok(planListRule !== null, 'the plan list has one rule')
+assert.ok(planListRule[0].includes('overflow-y:auto'), 'the plan list scrolls')
+assert.ok(/max-height:\d+px/.test(planListRule[0]), 'the plan list has a height cap')
 
 const monthTitles = texts.filter(value => /月$/.test(value) || /^[A-Z][a-z]{2} \d{4}$/.test(value))
 assert.ok(monthTitles.length >= 1, `the month is named (${monthTitles.join(', ')})`)

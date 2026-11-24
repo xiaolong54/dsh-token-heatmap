@@ -63,14 +63,14 @@ export function planNote(status, t, plansReady) {
 export function PlansCard(props) {
   const { t, plans, status, plansReady } = props
   if (plans.length === 0) {
-    return h('div', { className: 'thm-card' },
+    return h('div', { className: 'thm-card thm-plans-card' },
       h('div', { className: 'thm-card-head' }, h('span', { className: 'thm-card-title' }, t('plans'))),
       h('div', { className: 'thm-empty' }, planNote(status, t, plansReady)))
   }
-  return h('div', { className: 'thm-card' },
+  return h('div', { className: 'thm-card thm-plans-card' },
     h('div', { className: 'thm-card-head' },
       h('span', { className: 'thm-card-title' }, t('plans')),
-      h('span', { className: 'thm-card-note' }, t('modelRows', { n: plans.length }))),
+      h('span', { className: 'thm-card-note' }, t('planRows', { n: plans.length }))),
     h('div', { className: 'thm-plan-list' },
       plans.map(plan => h('div', { key: plan.id, className: 'thm-plan-block' },
         h('div', { className: 'thm-plan-block-name' }, plan.label),
