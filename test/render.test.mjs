@@ -17,6 +17,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const PAYLOAD = {
   updatedAt: 1795496706688,
   plansAt: Date.now(),
+  plansReady: true,
   plans: [
     {
       id: 'plan-mini',
@@ -271,25 +272,40 @@ assert.ok(texts.some(value => value.includes('minimax-tokenplan/MiniMax-M3.1-Fla
 
 console.log(`render test passed (${cells} cells, ${levels} shaded, ${empties} empty, ${monthTitles.length} months, plan switcher + bars rendered)`)
 
-// A start with no plan rows yet must not claim that nothing is connected:
-// the Host may still be asking the providers.
+// A start must not claim that nothing is connected while the Host is still
+// asking the providers for their plan rows.
 globalThis.fetch = async () => new Promise(() => {})
-const coldStates = new Map()
-coldStates.set('root', { hooks: [], index: 0 })
-let coldTree = null
-for (let round = 0; round < 5; round += 1) {
-  coldTree = render(h(registrations.get('sidebar.footer.action').component, { wide: true }), coldStates, 'cold')
-  shim.React.flush()
-  await new Promise(resolve => setTimeout(resolve, 0))
-  const dirty = [...coldStates.values()].some(state => state.dirty)
-  if (!dirty) break
-  for (const state of coldStates.values()) state.dirty = false
+
+/** The texts the sidebar card shows for one Host answer. */
+async function sidebarTexts(payload) {
+  globalThis.fetch = payload === null
+    ? async () => new Promise(() => {})
+    : async () => ({ ok: true, json: async () => payload })
+  const states = new Map()
+  states.set('root', { hooks: [], index: 0 })
+  let tree = null
+  for (let round = 0; round < 5; round += 1) {
+    tree = render(h(registrations.get('sidebar.footer.action').component, { wide: true }), states, 'cold')
+    shim.React.flush()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const dirty = [...states.values()].some(state => state.dirty)
+    if (!dirty) break
+    for (const state of states.values()) state.dirty = false
+  }
+  return text(tree)
 }
 
-const coldTexts = text(coldTree)
-assert.ok(coldTexts.includes('正在读取套餐…'), 'a cold start says it is reading the plans')
-assert.ok(!coldTexts.includes('未连接可查询余量的套餐'), 'a cold start does not claim that no plan is connected')
-assert.ok(coldTexts.includes('…'), 'the today figure waits for its first read')
+const waiting = await sidebarTexts(null)
+assert.ok(waiting.includes('正在读取套餐…'), 'a cold start says it is reading the plans')
+assert.ok(!waiting.includes('未连接可查询余量的套餐'), 'a cold start does not claim that no plan is connected')
+assert.ok(waiting.includes('…'), 'the today figure waits for its first read')
+
+const looking = await sidebarTexts({ ...PAYLOAD, plans: [], plansReady: false })
+assert.ok(looking.includes('正在读取套餐…'), 'the card waits while the Host is still looking')
+assert.ok(!looking.includes('未连接可查询余量的套餐'), 'the card does not claim that no plan is connected')
+
+const none = await sidebarTexts({ ...PAYLOAD, plans: [], plansReady: true })
+assert.ok(none.includes('未连接可查询余量的套餐'), 'a Host that looked and found nothing says so')
 
 console.log('cold start test passed (the card waits instead of reporting an empty plan)')
 

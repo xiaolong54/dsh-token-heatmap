@@ -60,6 +60,15 @@ one the card shows.
   the endpoint, the authentication and the parsing. Covered today: MiniMax,
   Kimi For Coding, GLM / Z.ai, OpenCode Go and Codex / ChatGPT.
 
+## A start that is honest
+
+The Host keeps the plan rows of its last probe in the ledger file, so a start
+shows the plans right away instead of an empty card. While the Host is still
+asking the providers, the card says it is reading them; only a Host that
+looked and found nothing says that no plan is connected. The browser reads
+the route quickly until that answer is whole, and then slows down to the
+normal interval.
+
 ## Layout
 
 | Path | Role |

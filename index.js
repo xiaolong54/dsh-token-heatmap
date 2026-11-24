@@ -156,6 +156,7 @@ function payload(ledger) {
     refreshing: ledger.folding !== null,
     plans: ledger.plans,
     plansAt: ledger.plansAt,
+    plansReady: ledger.plansReady,
     days: rows,
   }
 }
@@ -178,6 +179,9 @@ async function loadLedger(ledger, path) {
       ledger.updatedAt = parsed.updatedAt ?? 0
       ledger.plans = Array.isArray(parsed.plans) ? parsed.plans : []
       ledger.plansAt = Number(parsed.plansAt ?? 0)
+      // A ledger that holds plan rows was written by a Host that already
+      // looked, so the browser need not wait for the next probe.
+      ledger.plansReady = Array.isArray(parsed.plans)
     }
   } catch {
     // A missing or unreadable ledger simply means "fold everything once".
@@ -312,6 +316,8 @@ function createPlanProbe(ctx, ledger) {
     } catch {
       // A failed probe keeps the previous rows; the next tick retries.
     }
+    // The Host looked, so the browser knows that no row means "no plan".
+    ledger.plansReady = true
   }
 
   /**
@@ -407,6 +413,7 @@ export function apply(ctx) {
     folding: null,
     plans: [],
     plansAt: 0,
+    plansReady: false,
     path: join(ledgerFolder(), 'ledger.json'),
   }
   const refresher = createUsageRefresher(ctx, ledger)

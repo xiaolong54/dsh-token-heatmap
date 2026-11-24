@@ -41,14 +41,15 @@ export async function fetchUsage(fresh) {
  *
  * The Host restores its last known rows from the ledger, so a plan is known
  * right away; the rows themselves are only fresh once the Host asked the
- * providers again.
+ * providers again. A Host that already looked and found nothing has nothing
+ * more to send, so that answer is whole.
  *
  * @param {object} payload - the Host's answer.
- * @returns {boolean} true when the plan rows are present and fresh.
+ * @returns {boolean} true when the answer needs no follow-up read.
  */
 export function answerComplete(payload) {
   const plans = payload?.plans ?? []
-  if (plans.length === 0) return false
+  if (plans.length === 0) return payload?.plansReady === true
   const probedAt = Number(payload?.plansAt ?? 0)
   if (!Number.isFinite(probedAt) || probedAt <= 0) return false
   return Date.now() - probedAt <= PLAN_STALE_MS
@@ -62,7 +63,15 @@ export function answerComplete(payload) {
  * @returns {object} the usage state and the reload function.
  */
 export function useUsage(intervalMs = 30_000) {
-  const [state, setState] = React.useState({ status: 'loading', days: [], plans: [], plansAt: 0, updatedAt: 0, refreshing: false })
+  const [state, setState] = React.useState({
+    status: 'loading',
+    days: [],
+    plans: [],
+    plansAt: 0,
+    plansReady: false,
+    updatedAt: 0,
+    refreshing: false,
+  })
   const pending = React.useRef(0)
 
   const load = React.useCallback(async (fresh) => {
@@ -74,6 +83,7 @@ export function useUsage(intervalMs = 30_000) {
         days: payload.days ?? [],
         plans: payload.plans ?? [],
         plansAt: payload.plansAt ?? 0,
+        plansReady: payload.plansReady === true,
         updatedAt: payload.updatedAt ?? 0,
         refreshing: payload.refreshing === true,
       })

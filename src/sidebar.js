@@ -39,15 +39,16 @@ export function SideWindowRow(props) {
  * @param {object} props - the panel props.
  * @param {object[]} props.plans - the connected plans.
  * @param {string} props.status - the read status of the usage.
+ * @param {boolean} props.plansReady - whether the Host already looked.
  * @param {function} props.t - the translate function.
  * @returns {object} the panel element.
  */
 function PlanPanel(props) {
-  const { plans, selected, onSelect, status, t } = props
+  const { plans, selected, onSelect, status, plansReady, t } = props
   const [open, setOpen] = React.useState(false)
   const plan = plans.find(entry => entry.id === selected) ?? plans[0]
   if (plan === undefined) {
-    return h('div', { className: 'thm-plan-note' }, planNote(status, t))
+    return h('div', { className: 'thm-plan-note' }, planNote(status, t, plansReady))
   }
   const options = h('div', { className: 'thm-plan-menu' },
     plans.map(entry => h('button', {
@@ -99,5 +100,5 @@ export function SidebarHeatmap(props) {
     h('div', { className: 'thm-foot-head' },
       h('span', { className: 'thm-foot-label' }, t('todayLabel')),
       h('span', { className: 'thm-foot-value' }, todayValue)),
-    PlanPanel({ plans, selected, onSelect: setSelected, status: usage.status, t }))
+    PlanPanel({ plans, selected, onSelect: setSelected, status: usage.status, plansReady: usage.plansReady, t }))
 }

@@ -40,11 +40,13 @@ export function PlanWindowRow(props) {
  *
  * @param {string} status - the read status: loading, failed or ready.
  * @param {function} t - the translate function.
+ * @param {boolean} plansReady - whether the Host already looked for plans.
  * @returns {string} the note text.
  */
-export function planNote(status, t) {
+export function planNote(status, t, plansReady) {
   if (status === 'loading') return t('checkingPlans')
   if (status === 'failed') return t('plansFailed')
+  if (plansReady === false) return t('checkingPlans')
   return t('noPlans')
 }
 
@@ -54,15 +56,16 @@ export function planNote(status, t) {
  * @param {object} props - the card props.
  * @param {object[]} props.plans - the connected plans.
  * @param {string} props.status - the read status of the usage.
+ * @param {boolean} props.plansReady - whether the Host already looked.
  * @param {function} props.t - the translate function.
  * @returns {object} the card element.
  */
 export function PlansCard(props) {
-  const { t, plans, status } = props
+  const { t, plans, status, plansReady } = props
   if (plans.length === 0) {
     return h('div', { className: 'thm-card' },
       h('div', { className: 'thm-card-head' }, h('span', { className: 'thm-card-title' }, t('plans'))),
-      h('div', { className: 'thm-empty' }, planNote(status, t)))
+      h('div', { className: 'thm-empty' }, planNote(status, t, plansReady)))
   }
   return h('div', { className: 'thm-card' },
     h('div', { className: 'thm-card-head' },

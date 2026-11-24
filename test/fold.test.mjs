@@ -1,6 +1,7 @@
 /**
  * Host-half check: the usage route folds a fake session corpus into the
- * per-day, per-model buckets the page expects.
+ * per-day, per-model buckets the page expects, and a cold start answers with
+ * the plan rows of the last probe before the providers reply again.
  *
  * Usage: node test/fold.test.mjs
  */
@@ -11,26 +12,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../index.js'
 
-// The ledger is written next to the profile state; keep the test off the
-// real profile.
-const profile = mkdtempSync(join(tmpdir(), 'dsh-token-heatmap-'))
-process.env.DSH_PROFILE_DIR = profile
-
-// A ledger from a previous run: it holds the plan rows of the last probe.
-const storedPlan = {
-  id: 'plan-mini',
-  provider: 'mini',
-  label: 'MiniMax 套餐 · mini',
-  windows: [{ key: 'interval', name: '5 小时窗口', used: 40, remaining: 60, resetsAt: 1900000000000 }],
+/** The answer of a MiniMax coding plan. */
+const MINIMAX_ANSWER = {
+  base_resp: { status_code: 0 },
+  model_remains: [{
+    model_name: 'general',
+    current_interval_remaining_percent: 50,
+    end_time: 1900000000,
+    current_weekly_status: 1,
+    current_weekly_remaining_percent: 80,
+    weekly_end_time: 1900000000,
+  }],
 }
-mkdirSync(join(profile, 'dsh-token-heatmap'), { recursive: true })
-writeFileSync(join(profile, 'dsh-token-heatmap', 'ledger.json'), JSON.stringify({
-  version: 1,
-  updatedAt: 1795496706688,
-  plans: [storedPlan],
-  plansAt: 1795496706688,
-  sessions: {},
-}))
 
 /** One fake session with two assistant messages on two days. */
 const events = [
@@ -52,19 +45,6 @@ const sessionQuery = {
   },
 }
 
-/** Capture the registered route handler. */
-let handler
-const ctx = {
-  sessionQuery,
-  connection: { requestRejection: () => undefined },
-  webServer: { register: route => { handler = route.handler } },
-  effect: fn => fn(),
-  get: () => undefined,
-}
-
-apply(ctx)
-assert.equal(typeof handler, 'function', 'the route handler was registered')
-
 /** A minimal response double. */
 const response = {
   statusCode: 0,
@@ -74,13 +54,76 @@ const response = {
   end(text) { this.body = text ?? '' },
 }
 
+/** Read the route and return the payload the browser would get. */
+async function readRoute(handler) {
+  await handler({ method: 'GET', url: '/token-heatmap/usage' }, response)
+  assert.equal(response.statusCode, 200)
+  return JSON.parse(response.body)
+}
+
+/** The services the plugin reads, with one configured MiniMax route. */
+function fakeServices(capture) {
+  return {
+    sessionQuery,
+    connection: { requestRejection: () => undefined },
+    webServer: { register: route => { capture(route) } },
+    effect: fn => fn(),
+    get: name => {
+      if (name === 'configEditor') {
+        return {
+          configuration: () => [{
+            entry: { options: { id: 'llm-pi-ai' } },
+            inherited: { providers: { minimax: { baseURL: 'https://api.minimax.io/v1', apiKeyEnv: 'MINIMAX_KEY' } } },
+          }],
+        }
+      }
+      if (name === 'credentials') {
+        return {
+          readRecord: async () => ({ kind: 'api-key', key: 'test-key' }),
+          resolve: async () => ({ value: 'test-key' }),
+        }
+      }
+      return undefined
+    },
+  }
+}
+
+/** Wait for the background work of the Host to land. */
+const settle = () => new Promise(resolve => setTimeout(resolve, 50))
+
+// --- A machine that ran the plugin before: the ledger holds the plan rows ---
+
+const profile = mkdtempSync(join(tmpdir(), 'dsh-token-heatmap-'))
+process.env.DSH_PROFILE_DIR = profile
+
+const storedPlan = {
+  id: 'plan-mini',
+  provider: 'mini',
+  label: 'MiniMax 套餐 · mini',
+  windows: [{ key: 'interval', name: '5 小时窗口', used: 40, remaining: 60, resetsAt: 1900000000000 }],
+}
+mkdirSync(join(profile, 'dsh-token-heatmap'), { recursive: true })
+writeFileSync(join(profile, 'dsh-token-heatmap', 'ledger.json'), JSON.stringify({
+  version: 1,
+  updatedAt: 1795496706688,
+  plans: [storedPlan],
+  plansAt: 1795496706688,
+  sessions: {},
+}))
+
+// The provider probe is slow on a start: hold the answer back so the test
+// can look at the state the browser sees before the providers reply.
+let answerProbe
+globalThis.fetch = () => new Promise((resolve) => { answerProbe = resolve })
+
+let handler
+apply(fakeServices(route => { handler = route.handler }))
+assert.equal(typeof handler, 'function', 'the route handler was registered')
+
 // The fold runs in the background; give it a moment to land.
-await new Promise(resolve => setTimeout(resolve, 50))
+await settle()
 
-await handler({ method: 'GET', url: '/token-heatmap/usage' }, response)
-
-assert.equal(response.statusCode, 200)
-const payload = JSON.parse(response.body)
+const payload = await readRoute(handler)
 assert.equal(payload.days.length, 2, 'two days carry usage')
 
 const [first, second] = payload.days
@@ -100,6 +143,40 @@ assert.equal(second.models['deepseek/deepseek-chat'].calls, 1)
 assert.equal(payload.plans.length, 1, 'the stored plan rows came back')
 assert.equal(payload.plans[0].id, 'plan-mini')
 assert.equal(payload.plans[0].windows[0].remaining, 60)
+assert.equal(payload.plansReady, true, 'the Host already looked for plans')
+
+// Now the provider answers: its row joins the restored ones.
+answerProbe({ ok: true, json: async () => MINIMAX_ANSWER })
+await settle()
+
+const fresh = await readRoute(handler)
+assert.equal(fresh.plans.length, 2, 'the answered provider added its row')
+assert.equal(fresh.plans[1].id, 'plan-minimax')
+assert.equal(fresh.plans[1].windows[0].remaining, 50)
+assert.equal(fresh.plans[1].windows[1].remaining, 80)
+
+// --- A machine that never ran the plugin: no ledger, no plan rows yet ---
+
+process.env.DSH_PROFILE_DIR = mkdtempSync(join(tmpdir(), 'dsh-token-heatmap-'))
+
+let answerProbeFresh
+globalThis.fetch = () => new Promise((resolve) => { answerProbeFresh = resolve })
+
+let handlerFresh
+apply(fakeServices(route => { handlerFresh = route.handler }))
+await settle()
+
+const empty = await readRoute(handlerFresh)
+assert.equal(empty.plans.length, 0, 'no plan rows yet')
+assert.equal(empty.plansReady, false, 'the Host is still looking for plans')
+
+answerProbeFresh({ ok: true, json: async () => MINIMAX_ANSWER })
+await settle()
+
+const answered = await readRoute(handlerFresh)
+assert.equal(answered.plansReady, true, 'the Host says it looked for plans')
+assert.equal(answered.plans.length, 1, 'the provider row arrived')
+assert.equal(answered.plans[0].id, 'plan-minimax')
 
 console.log('fold test passed')
 

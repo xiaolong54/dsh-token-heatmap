@@ -701,14 +701,15 @@ async function fetchUsage(fresh) {
  *
  * The Host restores its last known rows from the ledger, so a plan is known
  * right away; the rows themselves are only fresh once the Host asked the
- * providers again.
+ * providers again. A Host that already looked and found nothing has nothing
+ * more to send, so that answer is whole.
  *
  * @param {object} payload - the Host's answer.
- * @returns {boolean} true when the plan rows are present and fresh.
+ * @returns {boolean} true when the answer needs no follow-up read.
  */
 function answerComplete(payload) {
   const plans = payload?.plans ?? []
-  if (plans.length === 0) return false
+  if (plans.length === 0) return payload?.plansReady === true
   const probedAt = Number(payload?.plansAt ?? 0)
   if (!Number.isFinite(probedAt) || probedAt <= 0) return false
   return Date.now() - probedAt <= PLAN_STALE_MS
@@ -722,7 +723,15 @@ function answerComplete(payload) {
  * @returns {object} the usage state and the reload function.
  */
 function useUsage(intervalMs = 30_000) {
-  const [state, setState] = React.useState({ status: 'loading', days: [], plans: [], plansAt: 0, updatedAt: 0, refreshing: false })
+  const [state, setState] = React.useState({
+    status: 'loading',
+    days: [],
+    plans: [],
+    plansAt: 0,
+    plansReady: false,
+    updatedAt: 0,
+    refreshing: false,
+  })
   const pending = React.useRef(0)
 
   const load = React.useCallback(async (fresh) => {
@@ -734,6 +743,7 @@ function useUsage(intervalMs = 30_000) {
         days: payload.days ?? [],
         plans: payload.plans ?? [],
         plansAt: payload.plansAt ?? 0,
+        plansReady: payload.plansReady === true,
         updatedAt: payload.updatedAt ?? 0,
         refreshing: payload.refreshing === true,
       })
@@ -806,11 +816,13 @@ function PlanWindowRow(props) {
  *
  * @param {string} status - the read status: loading, failed or ready.
  * @param {function} t - the translate function.
+ * @param {boolean} plansReady - whether the Host already looked for plans.
  * @returns {string} the note text.
  */
-function planNote(status, t) {
+function planNote(status, t, plansReady) {
   if (status === 'loading') return t('checkingPlans')
   if (status === 'failed') return t('plansFailed')
+  if (plansReady === false) return t('checkingPlans')
   return t('noPlans')
 }
 
@@ -820,15 +832,16 @@ function planNote(status, t) {
  * @param {object} props - the card props.
  * @param {object[]} props.plans - the connected plans.
  * @param {string} props.status - the read status of the usage.
+ * @param {boolean} props.plansReady - whether the Host already looked.
  * @param {function} props.t - the translate function.
  * @returns {object} the card element.
  */
 function PlansCard(props) {
-  const { t, plans, status } = props
+  const { t, plans, status, plansReady } = props
   if (plans.length === 0) {
     return h('div', { className: 'thm-card' },
       h('div', { className: 'thm-card-head' }, h('span', { className: 'thm-card-title' }, t('plans'))),
-      h('div', { className: 'thm-empty' }, planNote(status, t)))
+      h('div', { className: 'thm-empty' }, planNote(status, t, plansReady)))
   }
   return h('div', { className: 'thm-card' },
     h('div', { className: 'thm-card-head' },
@@ -1102,7 +1115,7 @@ function TokenHeatmapSection(props) {
       }),
       ModelCard({ t, models: summary.models, selected, onSelect: setSelected })),
 
-    PlansCard({ t, plans: usage.plans ?? [], status: usage.status }),
+    PlansCard({ t, plans: usage.plans ?? [], status: usage.status, plansReady: usage.plansReady }),
 
     h('div', { className: 'thm-note' },
       `${t('source')}${usage.updatedAt > 0 ? ` · ${t('updatedAt', { time: new Date(usage.updatedAt).toLocaleTimeString('zh-CN') })}` : ''}`),
@@ -1152,15 +1165,16 @@ function SideWindowRow(props) {
  * @param {object} props - the panel props.
  * @param {object[]} props.plans - the connected plans.
  * @param {string} props.status - the read status of the usage.
+ * @param {boolean} props.plansReady - whether the Host already looked.
  * @param {function} props.t - the translate function.
  * @returns {object} the panel element.
  */
 function PlanPanel(props) {
-  const { plans, selected, onSelect, status, t } = props
+  const { plans, selected, onSelect, status, plansReady, t } = props
   const [open, setOpen] = React.useState(false)
   const plan = plans.find(entry => entry.id === selected) ?? plans[0]
   if (plan === undefined) {
-    return h('div', { className: 'thm-plan-note' }, planNote(status, t))
+    return h('div', { className: 'thm-plan-note' }, planNote(status, t, plansReady))
   }
   const options = h('div', { className: 'thm-plan-menu' },
     plans.map(entry => h('button', {
@@ -1212,7 +1226,7 @@ function SidebarHeatmap(props) {
     h('div', { className: 'thm-foot-head' },
       h('span', { className: 'thm-foot-label' }, t('todayLabel')),
       h('span', { className: 'thm-foot-value' }, todayValue)),
-    PlanPanel({ plans, selected, onSelect: setSelected, status: usage.status, t }))
+    PlanPanel({ plans, selected, onSelect: setSelected, status: usage.status, plansReady: usage.plansReady, t }))
 }
 
 
