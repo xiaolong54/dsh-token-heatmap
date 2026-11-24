@@ -29,11 +29,16 @@ const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding:
 /** The publish time of that commit, in Unix seconds. */
 const publishedAt = Math.floor(Date.parse(execFileSync('git', ['show', '-s', '--format=%cI', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()) / 1000)
 
-/** The icon file name inside the index's icons folder. */
+/**
+ * The icon file name inside the index's icons folder.
+ */
 const iconFile = 'token-heatmap.svg'
 
-mkdirSync(join(root, 'market', 'icons'), { recursive: true })
-copyFileSync(join(root, 'icon.svg'), join(root, 'market', 'icons', iconFile))
+/** The site folder: GitHub Pages serves the repository's `docs` folder. */
+const site = join(root, 'docs', 'market')
+
+mkdirSync(join(site, 'icons'), { recursive: true })
+copyFileSync(join(root, 'icon.svg'), join(site, 'icons', iconFile))
 
 const index = {
   format: 1,
@@ -78,5 +83,5 @@ const index = {
   ],
 }
 
-writeFileSync(join(root, 'market', 'index.json'), `${JSON.stringify(index, null, 2)}\n`, 'utf8')
-console.log(`market/index.json written for ${manifest.name}@${manifest.version} at ${commit.slice(0, 12)}`)
+writeFileSync(join(site, 'index.json'), `${JSON.stringify(index, null, 2)}\n`, 'utf8')
+console.log(`docs/market/index.json written for ${manifest.name}@${manifest.version} at ${commit.slice(0, 12)}`)

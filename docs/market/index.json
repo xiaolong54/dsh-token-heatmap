@@ -1,0 +1,86 @@
+{
+  "format": 1,
+  "title": {
+    "en": "xiaolong54 plugins",
+    "zh": "xiaolong54 的插件"
+  },
+  "description": {
+    "en": "Personal plugin market of xiaolong54.",
+    "zh": "xiaolong54 的个人插件市场。"
+  },
+  "metadata": {
+    "categories": {
+      "personal": {
+        "title": {
+          "en": "Personal",
+          "zh": "个人"
+        }
+      }
+    },
+    "labels": {
+      "personal": {
+        "title": {
+          "en": "Personal",
+          "zh": "个人"
+        }
+      }
+    },
+    "sortKeys": {
+      "published": {
+        "title": {
+          "en": "Publish date",
+          "zh": "发布日期"
+        },
+        "order": "desc"
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "@xiaolong54/dsh-token-heatmap",
+      "title": {
+        "en": "Token heatmap",
+        "zh": "Token 热力图"
+      },
+      "description": {
+        "en": "Daily model token consumption as a month-by-month heatmap, plus the remaining quota of every connected coding plan.",
+        "zh": "把每个模型每天的 Token 消耗按月排成热力图，并显示已连接的各个 coding 套餐的剩余额度。"
+      },
+      "icon": "icons/token-heatmap.svg",
+      "author": "xiaolong54",
+      "homepage": "https://github.com/xiaolong54/dsh-token-heatmap#readme",
+      "repository": {
+        "url": "https://github.com/xiaolong54/dsh-token-heatmap"
+      },
+      "metadata": {
+        "category": "personal",
+        "labels": [
+          "personal"
+        ],
+        "keywords": [
+          "dsh",
+          "dsh-plugin",
+          "deepseek-harness",
+          "token",
+          "heatmap",
+          "usage",
+          "quota"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795503944,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/xiaolong54/dsh-token-heatmap",
+            "commit": "3fe6020d5ccd2782714eca2d27d4295bdd805959"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3"
+          }
+        }
+      ]
+    }
+  ]
+}
