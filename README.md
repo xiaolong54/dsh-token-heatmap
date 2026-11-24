@@ -47,17 +47,56 @@ node build.mjs
 
 ## Install
 
-In the profile (`~/.dsh/profiles/desktop`):
+### From npm (no build permission needed)
 
-```json
-"dependencies": { "@local/dsh-token-heatmap": "link:D:/dsh_ws/token-heatmap" }
+```sh
+npm add @xiaolong54/dsh-token-heatmap
 ```
 
-and add `"@local/dsh-token-heatmap"` to `dsh.profile.bundles` in
-`package.json`, then insert the row in `cordis.patch.yml`:
+The published tarball already carries the built client artifact, so nothing
+runs at install time. This is the path the big community indexes pick up
+automatically.
+
+### From the plugin market
+
+The bundle is listed in a plugin market index that installs this repository
+at a pinned commit:
+
+```
+https://xiaolong54.github.io/dsh-token-heatmap/market/index.json
+```
+
+In dsh, open **Plugins → Discover → Add index source**, paste that URL,
+then install **Token heatmap**.
+
+A Git install fetches sources, so the client artifact is built on the
+installing machine by this package's `prepare` script. pnpm refuses to run
+it until the package is allowlisted, and the key it asks for is the exact
+spec it prints — for a Git source that key names the commit:
 
 ```yaml
-- insert:
-    - id: token-heatmap
-      name: '@local/dsh-token-heatmap'
+# pnpm-workspace.yaml in the dsh profile
+allowBuilds:
+  '@xiaolong54/dsh-token-heatmap@https://codeload.github.com/xiaolong54/dsh-token-heatmap/tar.gz/<commit>': true
 ```
+
+Copy the key from the install error, then install again. Treat that
+allowance as permission to run this package's code on your machine.
+
+### From the command line
+
+```sh
+dsh plugin --profile desktop add github:xiaolong54/dsh-token-heatmap
+```
+
+## Publish a new version
+
+```sh
+git commit -am "…"
+node tools/build-market-index.mjs   # rewrites docs/market/index.json with the new commit
+git push
+```
+
+The index pins the commit it was built from, so a new commit is installed
+only after the index is rebuilt and pushed. `npm publish` publishes the
+built artifact, so users of the npm source never need the build permission.
