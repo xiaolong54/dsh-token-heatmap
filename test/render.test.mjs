@@ -232,6 +232,8 @@ assert.ok(classes.some(name => name.startsWith('thm-cell')), 'the heatmap cells 
 assert.ok(classes.includes('thm-model'), 'the model rows rendered')
 assert.ok(classes.includes('thm-month-grid'), 'one month grid rendered')
 assert.ok(classes.includes('thm-switch'), 'the month switcher rendered')
+assert.ok(classes.some(name => name.includes('thm-heatmap-card')), 'the heatmap card hugs its grid')
+assert.ok(classes.some(name => name.includes('thm-models-card')), 'the model card takes the rest of the row')
 
 const cells = classes.filter(name => name.startsWith('thm-cell')).length
 assert.ok(cells >= 28 && cells <= 42, `one month carries its own days (${cells})`)
@@ -241,6 +243,19 @@ assert.ok(levels > 0, 'some days carry an intensity level')
 
 const empties = classes.filter(name => name === 'thm-cell empty').length
 assert.ok(empties > 0, 'days without usage keep an empty cell')
+
+const futures = classes.filter(name => name === 'thm-cell future').length
+assert.ok(futures > 0, 'the days that have not happened yet keep their cell')
+
+// The stylesheet is what makes those cells visible, and what keeps the
+// month small enough to sit next to the model list.
+const futureRule = artifact.match(/\.thm-cell\.future\{[^}]*\}/)
+assert.ok(futureRule !== null, 'the future cells have their own rule')
+assert.ok(futureRule[0].includes('box-shadow'), 'a day that has not happened yet still shows a cell')
+
+const gridRule = artifact.match(/\.thm-weekday-row,\.thm-month-grid\{[^}]*\}/)
+assert.ok(gridRule !== null, 'the month grid has one rule')
+assert.ok(/max-width:2\d\dpx/.test(gridRule[0]), `the month grid stays compact (${gridRule[0]})`)
 
 const monthTitles = texts.filter(value => /月$/.test(value) || /^[A-Z][a-z]{2} \d{4}$/.test(value))
 assert.ok(monthTitles.length >= 1, `the month is named (${monthTitles.join(', ')})`)

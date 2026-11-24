@@ -183,12 +183,14 @@ const HEATMAP_CSS = `
 .thm-step{appearance:none;width:26px;height:26px;line-height:22px;font-size:16px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-family:inherit;}
 .thm-step:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}
 .thm-step:disabled{opacity:.35;cursor:default;}
-.thm-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start;}
-.thm-weekday-row,.thm-month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:340px;margin:0 auto;}
+.thm-columns{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;}
+.thm-heatmap-card{flex:none;width:fit-content;max-width:100%;}
+.thm-models-card{flex:1 1 320px;min-width:0;}
+.thm-weekday-row,.thm-month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:200px;margin:0 auto;}
 .thm-weekday{font-size:9px;line-height:10px;color:var(--dsw-alias-label-tertiary);text-align:center;}
 .thm-cell{aspect-ratio:1/1;border-radius:3px;background:transparent;}
 .thm-cell.empty{background:color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);}
-.thm-cell.future{background:transparent;}
+.thm-cell.future{background:transparent;box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);opacity:.55;}
 .thm-cell.today{box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary);}
 .thm-cell.l1{background:color-mix(in srgb, var(--dsw-alias-brand-primary) 26%, transparent);}
 .thm-cell.l2{background:color-mix(in srgb, var(--dsw-alias-brand-primary) 48%, transparent);}
@@ -644,16 +646,24 @@ function useTooltip() {
 /**
  * The bubble itself.
  *
+ * The bubble turns to the other side of the pointer when it would run out of
+ * the window, so the last column of the grid can be read as well.
+ *
  * @param {object} props - the bubble props.
  * @param {object | null} props.hover - the hovered cell, if any.
  * @returns {object | null} the bubble element.
  */
 function TooltipBubble({ hover }) {
   if (hover === null || hover === undefined) return null
-  return h('div', {
-    className: 'thm-tip',
-    style: { left: `${hover.x + 14}px`, top: `${hover.y + 14}px` },
-  }, hover.content)
+  const width = Number.isFinite(globalThis.window?.innerWidth) ? globalThis.window.innerWidth : 1024
+  const height = Number.isFinite(globalThis.window?.innerHeight) ? globalThis.window.innerHeight : 768
+  const flip = hover.x > width - 240
+  const style = {
+    left: `${hover.x + (flip ? -14 : 14)}px`,
+    top: `${Math.min(Math.max(hover.y + 14, 8), Math.max(8, height - 40))}px`,
+  }
+  if (flip) style.transform = 'translateX(-100%)'
+  return h('div', { className: 'thm-tip', style }, hover.content)
 }
 
 
@@ -931,7 +941,7 @@ function HeatmapCard(props) {
     }))
   }
 
-  return h('div', { className: 'thm-card' },
+  return h('div', { className: 'thm-card thm-heatmap-card' },
     h('div', { className: 'thm-card-head' },
       h('span', { className: 'thm-card-title' }, t('section')),
       h('span', { className: 'thm-card-note' },
@@ -1031,7 +1041,7 @@ function ModelCard(props) {
   })),
   h('span', { className: 'thm-model-tokens' }, formatTokens(row.total))))
 
-  return h('div', { className: 'thm-card' },
+  return h('div', { className: 'thm-card thm-models-card' },
     h('div', { className: 'thm-card-head' },
       h('span', { className: 'thm-card-title' }, t('models')),
       h('span', { className: 'thm-card-note' }, t('modelRows', { n: models.length }))),

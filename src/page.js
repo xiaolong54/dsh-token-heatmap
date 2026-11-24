@@ -74,7 +74,7 @@ function HeatmapCard(props) {
     }))
   }
 
-  return h('div', { className: 'thm-card' },
+  return h('div', { className: 'thm-card thm-heatmap-card' },
     h('div', { className: 'thm-card-head' },
       h('span', { className: 'thm-card-title' }, t('section')),
       h('span', { className: 'thm-card-note' },
@@ -174,7 +174,7 @@ function ModelCard(props) {
   })),
   h('span', { className: 'thm-model-tokens' }, formatTokens(row.total))))
 
-  return h('div', { className: 'thm-card' },
+  return h('div', { className: 'thm-card thm-models-card' },
     h('div', { className: 'thm-card-head' },
       h('span', { className: 'thm-card-title' }, t('models')),
       h('span', { className: 'thm-card-note' }, t('modelRows', { n: models.length }))),
