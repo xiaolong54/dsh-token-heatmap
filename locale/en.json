@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Token heatmap",
+    "description": "Shows the daily token consumption of every model as a month-by-month heatmap, plus a today card above the account row.",
+    "detail": "docs/DETAIL.md"
+  }
+}

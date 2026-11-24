@@ -1,0 +1,60 @@
+{
+  "name": "@xiaolong54/dsh-token-heatmap",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "license": "MIT",
+  "description": "Token heatmap for the dsh web client: daily model token consumption as a month-by-month heatmap, plus the remaining quota of every connected coding plan.",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "plans.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "prepare": "node build.mjs",
+    "test": "node test/format.test.mjs && node test/plans.test.mjs && node test/fold.test.mjs && node test/render.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xiaolong54/dsh-token-heatmap.git"
+  },
+  "homepage": "https://github.com/xiaolong54/dsh-token-heatmap#readme",
+  "bugs": {
+    "url": "https://github.com/xiaolong54/dsh-token-heatmap/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "token",
+    "heatmap",
+    "usage",
+    "quota"
+  ],
+  "engines": {
+    "dsh": ">=0.2.2-rc.3"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

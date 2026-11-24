@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Token 热力图",
+    "description": "把每个模型每天的 Token 消耗按月排成热力图，并在账号行上方显示今日消耗。",
+    "detail": "docs/DETAIL.md"
+  }
+}
