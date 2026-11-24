@@ -263,13 +263,16 @@ assert.ok(/max-width:[23]\d\dpx/.test(gridRule[0]), `the month grid stays compac
 // The heatmap takes two thirds of the row, the plans one third.
 const columnsRule = artifact.match(/\.thm-columns\{[^}]*\}/)
 assert.ok(columnsRule !== null, 'the row has one rule')
-assert.ok(columnsRule[0].includes('2fr') && columnsRule[0].includes('1fr'), `the heatmap takes two thirds (${columnsRule[0]})`)
+assert.ok(columnsRule[0].includes('1.85fr') && columnsRule[0].includes('1fr'), `the heatmap takes the larger share (${columnsRule[0]})`)
 
 // Many plans must not push the page apart: the list scrolls instead.
 const planListRule = artifact.match(/\.thm-plan-list\{[^}]*\}/)
 assert.ok(planListRule !== null, 'the plan list has one rule')
 assert.ok(planListRule[0].includes('overflow-y:auto'), 'the plan list scrolls')
-assert.ok(/max-height:\d+px/.test(planListRule[0]), 'the plan list has a height cap')
+assert.ok(planListRule[0].includes('min-height:0'), 'the plan list can shrink inside its card')
+
+// The two cards of the row must end at the same height.
+assert.ok(columnsRule[0].includes('align-items:stretch'), `the cards share one height (${columnsRule[0]})`)
 
 const monthTitles = texts.filter(value => /月$/.test(value) || /^[A-Z][a-z]{2} \d{4}$/.test(value))
 assert.ok(monthTitles.length >= 1, `the month is named (${monthTitles.join(', ')})`)
