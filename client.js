@@ -185,12 +185,12 @@ const HEATMAP_CSS = `
 .thm-step{appearance:none;width:26px;height:26px;line-height:22px;font-size:16px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-family:inherit;}
 .thm-step:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}
 .thm-step:disabled{opacity:.35;cursor:default;}
-.thm-columns{display:grid;grid-template-columns:fit-content(280px) minmax(0,1fr);gap:16px;align-items:start;}
+.thm-columns{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start;}
 .thm-heatmap-card{grid-column:1;grid-row:1;}
 .thm-plans-card{grid-column:2;grid-row:1;}
 .thm-models-card{grid-column:1/-1;grid-row:2;}
 @media (max-width:760px){.thm-columns{grid-template-columns:minmax(0,1fr);}.thm-heatmap-card,.thm-plans-card,.thm-models-card{grid-column:1;grid-row:auto;}}
-.thm-weekday-row,.thm-month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:240px;margin:0 auto;}
+.thm-weekday-row,.thm-month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:300px;margin:0 auto;}
 .thm-weekday{font-size:9px;line-height:10px;color:var(--dsw-alias-label-tertiary);text-align:center;}
 .thm-cell{aspect-ratio:1/1;border-radius:3px;background:transparent;}
 .thm-cell.empty{background:color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);}
@@ -863,7 +863,7 @@ function PlansCard(props) {
       h('span', { className: 'thm-card-note' }, t('planRows', { n: plans.length }))),
     h('div', { className: 'thm-plan-list' },
       plans.map(plan => h('div', { key: plan.id, className: 'thm-plan-block' },
-        h('div', { className: 'thm-plan-block-name' }, plan.label),
+        h('div', { className: 'thm-plan-block-name', title: plan.label }, plan.label),
         plan.windows.map(planWindow => PlanWindowRow({ planWindow, t }))))))
 }
 

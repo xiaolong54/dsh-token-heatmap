@@ -73,6 +73,6 @@ export function PlansCard(props) {
       h('span', { className: 'thm-card-note' }, t('planRows', { n: plans.length }))),
     h('div', { className: 'thm-plan-list' },
       plans.map(plan => h('div', { key: plan.id, className: 'thm-plan-block' },
-        h('div', { className: 'thm-plan-block-name' }, plan.label),
+        h('div', { className: 'thm-plan-block-name', title: plan.label }, plan.label),
         plan.windows.map(planWindow => PlanWindowRow({ planWindow, t }))))))
 }

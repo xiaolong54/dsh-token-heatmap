@@ -258,7 +258,12 @@ assert.ok(futureRule[0].includes('box-shadow'), 'a day that has not happened yet
 
 const gridRule = artifact.match(/\.thm-weekday-row,\.thm-month-grid\{[^}]*\}/)
 assert.ok(gridRule !== null, 'the month grid has one rule')
-assert.ok(/max-width:2\d\dpx/.test(gridRule[0]), `the month grid stays compact (${gridRule[0]})`)
+assert.ok(/max-width:[23]\d\dpx/.test(gridRule[0]), `the month grid stays compact (${gridRule[0]})`)
+
+// The heatmap takes two thirds of the row, the plans one third.
+const columnsRule = artifact.match(/\.thm-columns\{[^}]*\}/)
+assert.ok(columnsRule !== null, 'the row has one rule')
+assert.ok(columnsRule[0].includes('2fr') && columnsRule[0].includes('1fr'), `the heatmap takes two thirds (${columnsRule[0]})`)
 
 // Many plans must not push the page apart: the list scrolls instead.
 const planListRule = artifact.match(/\.thm-plan-list\{[^}]*\}/)
