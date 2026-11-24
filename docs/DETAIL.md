@@ -1,5 +1,15 @@
 # Token heatmap
 
+## Screenshots
+
+![The month heatmap](https://raw.githubusercontent.com/xiaolong54/dsh-token-heatmap/main/docs/screenshots/settings-heatmap.png)
+
+![The connected plans](https://raw.githubusercontent.com/xiaolong54/dsh-token-heatmap/main/docs/screenshots/settings-plans.png)
+
+![The per-model breakdown](https://raw.githubusercontent.com/xiaolong54/dsh-token-heatmap/main/docs/screenshots/settings-models.png)
+
+![The sidebar card](https://raw.githubusercontent.com/xiaolong54/dsh-token-heatmap/main/docs/screenshots/sidebar-plan-card.png)
+
 ## What it does
 
 Adds two surfaces to the dsh web client:

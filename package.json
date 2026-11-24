@@ -20,6 +20,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "docs/DETAIL.md",
+    "docs/screenshots",
     "icon.svg"
   ],
   "scripts": {

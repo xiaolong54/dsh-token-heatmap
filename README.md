@@ -1,7 +1,46 @@
-# @local/dsh-token-heatmap
+# @xiaolong54/dsh-token-heatmap
 
-A local dsh bundle that shows how many tokens the models on this machine
-spent, day by day, as a month-by-month heatmap.
+A dsh bundle that shows how many tokens the models on this machine spent,
+day by day, as a month-by-month heatmap — and how much of each coding plan
+is left.
+
+## Screenshots
+
+### The heatmap
+
+The daily consumption of every model, one month at a time. A day without
+usage keeps an empty cell, a day that has not happened yet stays blank, and
+the four shades are the quartiles of the days that carry usage. Hovering a
+cell shows that day's tokens and calls.
+
+![The settings page with the month heatmap](docs/screenshots/settings-heatmap.png)
+
+### The plans
+
+Every coding plan the machine is connected to, one bar per window — the
+short interval window and the weekly one — with how long is left until each
+resets.
+
+![Every connected plan with its windows](docs/screenshots/settings-plans.png)
+
+### The per-model breakdown
+
+Every model that has ever run on this machine, with its share of the total.
+Picking a model narrows the heatmap to it.
+
+![The per-model breakdown](docs/screenshots/settings-models.png)
+
+### The sidebar card
+
+Above the account row: what today cost, and the remaining quota of the
+connected plans.
+
+![The sidebar card](docs/screenshots/sidebar-plan-card.png)
+
+The plan name opens a switcher, so a machine with several plans picks which
+one the card shows.
+
+![The plan switcher open](docs/screenshots/sidebar-plan-switcher.png)
 
 ## What it does
 
@@ -38,6 +77,8 @@ spent, day by day, as a month-by-month heatmap.
 | `src/styles.js` | The stylesheet of both surfaces |
 | `src/index.js` | Client registration |
 | `build.mjs` | Builds `client.js` from `src/` |
+| `tools/build-market-index.mjs` | Builds the plugin market index |
+| `docs/screenshots/` | The images above |
 
 ## Build
 
