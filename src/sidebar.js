@@ -9,6 +9,7 @@
 import { HEATMAP_CSS } from './styles.js'
 import { formatDay, summarize } from './heatmap.js'
 import { formatTokens, remainingSpan, resetTime, spanText } from './format.js'
+import { planNote } from './plans.js'
 import { useUsage } from './usage.js'
 
 /**
@@ -36,14 +37,17 @@ export function SideWindowRow(props) {
  * The plan panel: the plan switcher and the windows of the shown plan.
  *
  * @param {object} props - the panel props.
+ * @param {object[]} props.plans - the connected plans.
+ * @param {string} props.status - the read status of the usage.
+ * @param {function} props.t - the translate function.
  * @returns {object} the panel element.
  */
 function PlanPanel(props) {
-  const { plans, selected, onSelect, t } = props
+  const { plans, selected, onSelect, status, t } = props
   const [open, setOpen] = React.useState(false)
   const plan = plans.find(entry => entry.id === selected) ?? plans[0]
   if (plan === undefined) {
-    return h('div', { className: 'thm-plan-note' }, t('noPlans'))
+    return h('div', { className: 'thm-plan-note' }, planNote(status, t))
   }
   const options = h('div', { className: 'thm-plan-menu' },
     plans.map(entry => h('button', {
@@ -86,11 +90,14 @@ export function SidebarHeatmap(props) {
   const todayEntry = summary.values.get(formatDay(today))
   const todayTotal = todayEntry ? todayEntry.total : 0
   const plans = usage.plans ?? []
+  // The first read is still on its way; the card waits instead of claiming
+  // that nothing was spent today.
+  const todayValue = usage.status === 'loading' ? '…' : formatTokens(todayTotal)
 
   return h('div', { className: 'thm-foot' },
     h('style', null, HEATMAP_CSS),
     h('div', { className: 'thm-foot-head' },
       h('span', { className: 'thm-foot-label' }, t('todayLabel')),
-      h('span', { className: 'thm-foot-value' }, formatTokens(todayTotal))),
-    PlanPanel({ plans, selected, onSelect: setSelected, t }))
+      h('span', { className: 'thm-foot-value' }, todayValue)),
+    PlanPanel({ plans, selected, onSelect: setSelected, status: usage.status, t }))
 }

@@ -34,6 +34,9 @@ const REFRESH_INTERVAL_MS = 20_000
 /** How often the background refresh re-reads the whole corpus. */
 const FULL_REFRESH_INTERVAL_MS = 10 * 60_000
 
+/** How old a plan row may be before the providers are asked again. */
+const PLAN_STALE_MS = 60_000
+
 /**
  * The folder the ledger lives in.
  *
@@ -152,12 +155,16 @@ function payload(ledger) {
     updatedAt: ledger.updatedAt,
     refreshing: ledger.folding !== null,
     plans: ledger.plans,
+    plansAt: ledger.plansAt,
     days: rows,
   }
 }
 
 /**
  * Read the ledger file into the ledger state.
+ *
+ * The file holds the plan rows of the last probe as well, so a start shows
+ * the plans right away instead of waiting for the providers to answer again.
  *
  * @param {object} ledger - the ledger state.
  * @param {string} path - the ledger file.
@@ -169,6 +176,8 @@ async function loadLedger(ledger, path) {
     if (parsed?.version === 1 && parsed.sessions !== undefined) {
       ledger.sessions = parsed.sessions
       ledger.updatedAt = parsed.updatedAt ?? 0
+      ledger.plans = Array.isArray(parsed.plans) ? parsed.plans : []
+      ledger.plansAt = Number(parsed.plansAt ?? 0)
     }
   } catch {
     // A missing or unreadable ledger simply means "fold everything once".
@@ -188,6 +197,7 @@ async function saveLedger(ledger, path) {
     version: 1,
     updatedAt: ledger.updatedAt,
     plans: ledger.plans,
+    plansAt: ledger.plansAt,
     sessions: ledger.sessions,
   }))
 }
@@ -237,18 +247,21 @@ async function refreshLedger(ledger, sessionQuery, { full }) {
 }
 
 /**
- * Register the usage route and the background refresh.
+ * The usage refresher of the Host.
+ *
+ * One fold runs at a time: a read that arrives during a fold waits for it
+ * instead of starting a second one.
  *
  * @param {object} ctx - the Host plugin context.
+ * @param {object} ledger - the ledger state.
+ * @returns {object} the refresher.
  */
-export function apply(ctx) {
-  const ledger = { sessions: {}, updatedAt: 0, folding: null, plans: [], path: join(ledgerFolder(), 'ledger.json') }
-
+function createUsageRefresher(ctx, ledger) {
   /**
-   * Run one background refresh, never overlapping with itself.
+   * Fold the corpus once, unless a fold is already running.
    *
    * @param {boolean} full - whether every session is re-read.
-   * @returns {Promise<void>} after the refresh settled.
+   * @returns {Promise<void>} after the fold settled.
    */
   const refresh = async (full) => {
     if (ledger.folding !== null) return ledger.folding
@@ -264,25 +277,72 @@ export function apply(ctx) {
     return ledger.folding
   }
 
+  return { refresh }
+}
+
+/**
+ * The plan probe of the Host.
+ *
+ * One probe runs at a time. The rows it produced keep their own time stamp,
+ * so the browser can tell fresh rows from the ones a start restored from the
+ * ledger.
+ *
+ * @param {object} ctx - the Host plugin context.
+ * @param {object} ledger - the ledger state.
+ * @returns {object} the probe.
+ */
+function createPlanProbe(ctx, ledger) {
+  let inFlight = null
+  let lastAttempt = 0
+
   /**
-   * Read the plan rows of every route that answers.
+   * Ask the providers once and keep the rows that answer.
    *
    * @returns {Promise<void>} after the plan rows settled.
    */
-  const refreshPlans = async () => {
+  const run = async () => {
     try {
       const rows = await probePlans(ctx)
       // A provider that did not answer keeps its last known row.
       const merged = new Map(ledger.plans.map(plan => [plan.id, plan]))
       for (const row of rows) merged.set(row.id, row)
       ledger.plans = [...merged.values()]
+      ledger.plansAt = Date.now()
       await saveLedger(ledger, ledger.path)
     } catch {
       // A failed probe keeps the previous rows; the next tick retries.
     }
   }
 
-  ctx.effect(() => ctx.webServer.register({
+  /**
+   * Ask the providers when the known rows are older than the given age.
+   *
+   * @param {number} maxAgeMs - how old a row may be.
+   * @returns {Promise<void>} after the probe settled, or right away.
+   */
+  const ensureFresh = async (maxAgeMs) => {
+    const known = Math.max(ledger.plansAt, lastAttempt)
+    if (Date.now() - known < maxAgeMs) return
+    if (inFlight !== null) return inFlight
+    lastAttempt = Date.now()
+    inFlight = run().finally(() => { inFlight = null })
+    return inFlight
+  }
+
+  return { ensureFresh }
+}
+
+/**
+ * Register the route the browser reads.
+ *
+ * @param {object} ctx - the Host plugin context.
+ * @param {object} ledger - the ledger state.
+ * @param {object} refresher - the usage refresher.
+ * @param {object} probe - the plan probe.
+ * @returns {object} the route effect.
+ */
+function registerUsageRoute(ctx, ledger, refresher, probe) {
+  return ctx.webServer.register({
     kind: 'exact',
     path: USAGE_PATH,
     handler: async (req, res) => {
@@ -304,24 +364,65 @@ export function apply(ctx) {
       res.setHeader('cache-control', 'no-store')
       res.end(JSON.stringify(body))
       // The answer is already on its way; the next refresh only updates it.
-      if (typeof req.url === 'string' && req.url.includes('fresh=1')) void refresh(false)
+      if (typeof req.url === 'string' && req.url.includes('fresh=1')) void refresher.refresh(false)
+      // Stale rows are refreshed in the background, so the next read is fresh.
+      void probe.ensureFresh(PLAN_STALE_MS)
     },
-  }), `token-heatmap: GET ${USAGE_PATH}`)
+  }, `token-heatmap: GET ${USAGE_PATH}`)
+}
+
+/**
+ * Run the background refresh of the usage and of the plans.
+ *
+ * @param {object} refresher - the usage refresher.
+ * @param {object} probe - the plan probe.
+ * @returns {function} the stop function of the timer.
+ */
+function startBackgroundRefresh(refresher, probe) {
+  let ticks = 0
+  let planTicks = 0
+  const timer = setInterval(() => {
+    ticks += 1
+    planTicks += 1
+    const full = ticks * REFRESH_INTERVAL_MS >= FULL_REFRESH_INTERVAL_MS
+    if (full) ticks = 0
+    void refresher.refresh(full)
+    if (planTicks % 3 === 0) {
+      planTicks = 0
+      void probe.ensureFresh(PLAN_STALE_MS)
+    }
+  }, REFRESH_INTERVAL_MS)
+  return () => clearInterval(timer)
+}
+
+/**
+ * Register the usage route and the background refresh.
+ *
+ * @param {object} ctx - the Host plugin context.
+ */
+export function apply(ctx) {
+  const ledger = {
+    sessions: {},
+    updatedAt: 0,
+    folding: null,
+    plans: [],
+    plansAt: 0,
+    path: join(ledgerFolder(), 'ledger.json'),
+  }
+  const refresher = createUsageRefresher(ctx, ledger)
+  const probe = createPlanProbe(ctx, ledger)
+
+  ctx.effect(
+    () => registerUsageRoute(ctx, ledger, refresher, probe),
+    `token-heatmap: GET ${USAGE_PATH}`,
+  )
 
   ctx.effect(() => {
     void (async () => {
       await loadLedger(ledger, ledger.path)
-      await refresh(true)
-      await refreshPlans()
+      // The fold and the plan probe do not depend on each other: both start now.
+      await Promise.all([refresher.refresh(true), probe.ensureFresh(0)])
     })()
-    let ticks = 0
-    const timer = setInterval(() => {
-      ticks += 1
-      const full = ticks * REFRESH_INTERVAL_MS >= FULL_REFRESH_INTERVAL_MS
-      if (full) ticks = 0
-      void refresh(full)
-      if (ticks % 3 === 0) void refreshPlans()
-    }, REFRESH_INTERVAL_MS)
-    return () => clearInterval(timer)
+    return startBackgroundRefresh(refresher, probe)
   }, 'token-heatmap: background refresh')
 }

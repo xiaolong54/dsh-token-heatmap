@@ -48,6 +48,8 @@ const zh = {
   'previousMonth': '上一个月',
   'nextMonth': '下一个月',
   'noPlans': '未连接可查询余量的套餐',
+  'checkingPlans': '正在读取套餐…',
+  'plansFailed': '套餐读取失败，稍后重试',
   'windowRemaining': '剩 {percent}%',
   'resetsAt': '{time} 重置',
   'resetsIn': '{span}后重置（{time}）',
@@ -90,6 +92,8 @@ const en = {
   'previousMonth': 'Previous month',
   'nextMonth': 'Next month',
   'noPlans': 'No plan with a queryable remainder',
+  'checkingPlans': 'Reading plans…',
+  'plansFailed': 'Could not read the plans, retrying',
   'windowRemaining': '{percent}% left',
   'resetsAt': 'resets at {time}',
   'resetsIn': 'resets in {span} ({time})',
@@ -659,10 +663,25 @@ function TooltipBubble({ hover }) {
  *
  * Both surfaces read the same Host route: the settings page and the sidebar
  * card. The Host answers from its ledger, so a read is a small JSON fetch.
+ *
+ * The read repeats on its own timer. Right after a start the Host still has
+ * to fold the corpus and to ask the providers for their plan rows, so the
+ * hook reads quickly while the answer is incomplete and slows down to the
+ * normal interval once the answer is whole. That way a start shows the plans
+ * as soon as the Host has them instead of after the next long tick.
  */
 
 /** The route the Host answers with the folded usage. */
 const USAGE_URL = '/token-heatmap/usage'
+
+/** How quickly the hook reads again while the answer is still incomplete. */
+const QUICK_READ_MS = 2_000
+
+/** How many quick reads the hook makes before it waits for the normal tick. */
+const QUICK_READ_LIMIT = 20
+
+/** How old a plan row may be before the answer counts as incomplete. */
+const PLAN_STALE_MS = 90_000
 
 /**
  * Read the folded usage from the Host.
@@ -678,33 +697,66 @@ async function fetchUsage(fresh) {
 }
 
 /**
+ * Whether an answer carries the plan rows the user expects to see.
+ *
+ * The Host restores its last known rows from the ledger, so a plan is known
+ * right away; the rows themselves are only fresh once the Host asked the
+ * providers again.
+ *
+ * @param {object} payload - the Host's answer.
+ * @returns {boolean} true when the plan rows are present and fresh.
+ */
+function answerComplete(payload) {
+  const plans = payload?.plans ?? []
+  if (plans.length === 0) return false
+  const probedAt = Number(payload?.plansAt ?? 0)
+  if (!Number.isFinite(probedAt) || probedAt <= 0) return false
+  return Date.now() - probedAt <= PLAN_STALE_MS
+}
+
+/**
  * Load the usage and keep it fresh while the surface is mounted.
  *
- * @param {number} intervalMs - how often the usage is read again.
+ * @param {number} intervalMs - how often the usage is read again once the
+ *   answer is complete.
  * @returns {object} the usage state and the reload function.
  */
 function useUsage(intervalMs = 30_000) {
-  const [state, setState] = React.useState({ status: 'loading', days: [], plans: [], updatedAt: 0, refreshing: false })
+  const [state, setState] = React.useState({ status: 'loading', days: [], plans: [], plansAt: 0, updatedAt: 0, refreshing: false })
+  const pending = React.useRef(0)
 
   const load = React.useCallback(async (fresh) => {
     try {
       const payload = await fetchUsage(fresh)
+      pending.current = answerComplete(payload) ? 0 : pending.current + 1
       setState({
         status: 'ready',
         days: payload.days ?? [],
         plans: payload.plans ?? [],
+        plansAt: payload.plansAt ?? 0,
         updatedAt: payload.updatedAt ?? 0,
         refreshing: payload.refreshing === true,
       })
     } catch (error) {
+      pending.current += 1
       setState(previous => ({ ...previous, status: 'failed', error: String(error?.message ?? error) }))
     }
   }, [])
 
   React.useEffect(() => {
-    void load(false)
-    const timer = setInterval(() => void load(false), intervalMs)
-    return () => clearInterval(timer)
+    let stopped = false
+    let timer = undefined
+    const tick = async () => {
+      await load(false)
+      if (stopped) return
+      const delay = pending.current < QUICK_READ_LIMIT ? QUICK_READ_MS : intervalMs
+      timer = setTimeout(tick, delay)
+    }
+    void tick()
+    return () => {
+      stopped = true
+      if (timer !== undefined) clearTimeout(timer)
+    }
   }, [load, intervalMs])
 
   return { ...state, load }
@@ -746,19 +798,37 @@ function PlanWindowRow(props) {
 }
 
 /**
+ * The note that stands in for the plan rows while they are not there.
+ *
+ * A start is not the same as "no plan": the Host may still be asking the
+ * providers, so the note says what is going on instead of claiming that
+ * nothing is connected.
+ *
+ * @param {string} status - the read status: loading, failed or ready.
+ * @param {function} t - the translate function.
+ * @returns {string} the note text.
+ */
+function planNote(status, t) {
+  if (status === 'loading') return t('checkingPlans')
+  if (status === 'failed') return t('plansFailed')
+  return t('noPlans')
+}
+
+/**
  * The plan card: every connected plan with its windows.
  *
  * @param {object} props - the card props.
  * @param {object[]} props.plans - the connected plans.
+ * @param {string} props.status - the read status of the usage.
  * @param {function} props.t - the translate function.
  * @returns {object} the card element.
  */
 function PlansCard(props) {
-  const { t, plans } = props
+  const { t, plans, status } = props
   if (plans.length === 0) {
     return h('div', { className: 'thm-card' },
       h('div', { className: 'thm-card-head' }, h('span', { className: 'thm-card-title' }, t('plans'))),
-      h('div', { className: 'thm-empty' }, t('noPlans')))
+      h('div', { className: 'thm-empty' }, planNote(status, t)))
   }
   return h('div', { className: 'thm-card' },
     h('div', { className: 'thm-card-head' },
@@ -1032,7 +1102,7 @@ function TokenHeatmapSection(props) {
       }),
       ModelCard({ t, models: summary.models, selected, onSelect: setSelected })),
 
-    PlansCard({ t, plans: usage.plans ?? [] }),
+    PlansCard({ t, plans: usage.plans ?? [], status: usage.status }),
 
     h('div', { className: 'thm-note' },
       `${t('source')}${usage.updatedAt > 0 ? ` · ${t('updatedAt', { time: new Date(usage.updatedAt).toLocaleTimeString('zh-CN') })}` : ''}`),
@@ -1048,6 +1118,7 @@ function TokenHeatmapSection(props) {
  * what today cost plus what is left of the plans the machine is connected
  * to. No grid here: the card is a readout, the heatmap lives in Settings.
  */
+
 
 
 
@@ -1079,14 +1150,17 @@ function SideWindowRow(props) {
  * The plan panel: the plan switcher and the windows of the shown plan.
  *
  * @param {object} props - the panel props.
+ * @param {object[]} props.plans - the connected plans.
+ * @param {string} props.status - the read status of the usage.
+ * @param {function} props.t - the translate function.
  * @returns {object} the panel element.
  */
 function PlanPanel(props) {
-  const { plans, selected, onSelect, t } = props
+  const { plans, selected, onSelect, status, t } = props
   const [open, setOpen] = React.useState(false)
   const plan = plans.find(entry => entry.id === selected) ?? plans[0]
   if (plan === undefined) {
-    return h('div', { className: 'thm-plan-note' }, t('noPlans'))
+    return h('div', { className: 'thm-plan-note' }, planNote(status, t))
   }
   const options = h('div', { className: 'thm-plan-menu' },
     plans.map(entry => h('button', {
@@ -1129,13 +1203,16 @@ function SidebarHeatmap(props) {
   const todayEntry = summary.values.get(formatDay(today))
   const todayTotal = todayEntry ? todayEntry.total : 0
   const plans = usage.plans ?? []
+  // The first read is still on its way; the card waits instead of claiming
+  // that nothing was spent today.
+  const todayValue = usage.status === 'loading' ? '…' : formatTokens(todayTotal)
 
   return h('div', { className: 'thm-foot' },
     h('style', null, HEATMAP_CSS),
     h('div', { className: 'thm-foot-head' },
       h('span', { className: 'thm-foot-label' }, t('todayLabel')),
-      h('span', { className: 'thm-foot-value' }, formatTokens(todayTotal))),
-    PlanPanel({ plans, selected, onSelect: setSelected, t }))
+      h('span', { className: 'thm-foot-value' }, todayValue)),
+    PlanPanel({ plans, selected, onSelect: setSelected, status: usage.status, t }))
 }
 
 

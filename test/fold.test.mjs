@@ -6,14 +6,31 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from '../index.js'
 
 // The ledger is written next to the profile state; keep the test off the
 // real profile.
-process.env.DSH_PROFILE_DIR = mkdtempSync(join(tmpdir(), 'dsh-token-heatmap-'))
+const profile = mkdtempSync(join(tmpdir(), 'dsh-token-heatmap-'))
+process.env.DSH_PROFILE_DIR = profile
+
+// A ledger from a previous run: it holds the plan rows of the last probe.
+const storedPlan = {
+  id: 'plan-mini',
+  provider: 'mini',
+  label: 'MiniMax 套餐 · mini',
+  windows: [{ key: 'interval', name: '5 小时窗口', used: 40, remaining: 60, resetsAt: 1900000000000 }],
+}
+mkdirSync(join(profile, 'dsh-token-heatmap'), { recursive: true })
+writeFileSync(join(profile, 'dsh-token-heatmap', 'ledger.json'), JSON.stringify({
+  version: 1,
+  updatedAt: 1795496706688,
+  plans: [storedPlan],
+  plansAt: 1795496706688,
+  sessions: {},
+}))
 
 /** One fake session with two assistant messages on two days. */
 const events = [
@@ -42,6 +59,7 @@ const ctx = {
   connection: { requestRejection: () => undefined },
   webServer: { register: route => { handler = route.handler } },
   effect: fn => fn(),
+  get: () => undefined,
 }
 
 apply(ctx)
@@ -76,6 +94,12 @@ assert.equal(second.day, '2026-11-24')
 assert.equal(second.models['mini/MiniMax-M3.1-Flash'].input, 5)
 assert.equal(second.models['deepseek/deepseek-chat'].input, 7)
 assert.equal(second.models['deepseek/deepseek-chat'].calls, 1)
+
+// The plan rows of the last probe are restored from the ledger, so a start
+// shows the plans before the providers answered again.
+assert.equal(payload.plans.length, 1, 'the stored plan rows came back')
+assert.equal(payload.plans[0].id, 'plan-mini')
+assert.equal(payload.plans[0].windows[0].remaining, 60)
 
 console.log('fold test passed')
 

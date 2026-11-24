@@ -16,6 +16,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 /** The Host's answer, taken from a real fold of this machine's sessions. */
 const PAYLOAD = {
   updatedAt: 1795496706688,
+  plansAt: Date.now(),
   plans: [
     {
       id: 'plan-mini',
@@ -85,6 +86,12 @@ function createReact() {
       return state.hooks[index].value
     },
     useCallback: callback => callback,
+    useRef(initial) {
+      const state = current
+      const index = state.index++
+      if (!(index in state.hooks)) state.hooks[index] = { current: initial }
+      return state.hooks[index]
+    },
     /** Run the effects the last render queued. */
     flush() {
       while (effects.length > 0) {
@@ -263,6 +270,28 @@ assert.ok(texts.some(value => value.includes('Token')), 'the totals are shown')
 assert.ok(texts.some(value => value.includes('minimax-tokenplan/MiniMax-M3.1-Flash')), 'the model names are shown')
 
 console.log(`render test passed (${cells} cells, ${levels} shaded, ${empties} empty, ${monthTitles.length} months, plan switcher + bars rendered)`)
+
+// A start with no plan rows yet must not claim that nothing is connected:
+// the Host may still be asking the providers.
+globalThis.fetch = async () => new Promise(() => {})
+const coldStates = new Map()
+coldStates.set('root', { hooks: [], index: 0 })
+let coldTree = null
+for (let round = 0; round < 5; round += 1) {
+  coldTree = render(h(registrations.get('sidebar.footer.action').component, { wide: true }), coldStates, 'cold')
+  shim.React.flush()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const dirty = [...coldStates.values()].some(state => state.dirty)
+  if (!dirty) break
+  for (const state of coldStates.values()) state.dirty = false
+}
+
+const coldTexts = text(coldTree)
+assert.ok(coldTexts.includes('正在读取套餐…'), 'a cold start says it is reading the plans')
+assert.ok(!coldTexts.includes('未连接可查询余量的套餐'), 'a cold start does not claim that no plan is connected')
+assert.ok(coldTexts.includes('…'), 'the today figure waits for its first read')
+
+console.log('cold start test passed (the card waits instead of reporting an empty plan)')
 
 // The page polls the Host, so the event loop still holds a timer.
 process.exit(0)

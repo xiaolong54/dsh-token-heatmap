@@ -32,19 +32,37 @@ export function PlanWindowRow(props) {
 }
 
 /**
+ * The note that stands in for the plan rows while they are not there.
+ *
+ * A start is not the same as "no plan": the Host may still be asking the
+ * providers, so the note says what is going on instead of claiming that
+ * nothing is connected.
+ *
+ * @param {string} status - the read status: loading, failed or ready.
+ * @param {function} t - the translate function.
+ * @returns {string} the note text.
+ */
+export function planNote(status, t) {
+  if (status === 'loading') return t('checkingPlans')
+  if (status === 'failed') return t('plansFailed')
+  return t('noPlans')
+}
+
+/**
  * The plan card: every connected plan with its windows.
  *
  * @param {object} props - the card props.
  * @param {object[]} props.plans - the connected plans.
+ * @param {string} props.status - the read status of the usage.
  * @param {function} props.t - the translate function.
  * @returns {object} the card element.
  */
 export function PlansCard(props) {
-  const { t, plans } = props
+  const { t, plans, status } = props
   if (plans.length === 0) {
     return h('div', { className: 'thm-card' },
       h('div', { className: 'thm-card-head' }, h('span', { className: 'thm-card-title' }, t('plans'))),
-      h('div', { className: 'thm-empty' }, t('noPlans')))
+      h('div', { className: 'thm-empty' }, planNote(status, t)))
   }
   return h('div', { className: 'thm-card' },
     h('div', { className: 'thm-card-head' },
