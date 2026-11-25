@@ -125,7 +125,7 @@ function answerAll(response) {
 
 /** Answer every request that waits, over as many rounds as the vendor needs. */
 async function answerAllRounds(response) {
-  for (let round = 0; round < 6; round += 1) {
+  for (let round = 0; round < 16; round += 1) {
     await settle()
     if (pending.length === 0) return
     answerAll(response)

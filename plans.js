@@ -162,6 +162,35 @@ async function readJson(url, headers) {
 }
 
 /**
+ * The origins a family's account endpoints answer on.
+ *
+ * The route's base URL says where the model calls go, and that may be a
+ * local relay. The account lives on the vendor's own host, so the route's
+ * origin comes first — it is the host the key is known to work with — and
+ * the vendor's hosts are the fallback.
+ *
+ * @param {object} family - the vendor family.
+ * @param {object} route - the configured route.
+ * @param {object} [options] - the options.
+ * @param {boolean} [options.known] - whether the family is known. A route of
+ *   an unknown vendor is asked on the vendor's own host only.
+ * @returns {string[]} the origins to try.
+ */
+export function familyOrigins(family, route, { known = true } = {}) {
+  const vendor = [...(family.accountOrigins ?? [])]
+  if (!known) return vendor.slice(0, 1)
+  let routeOrigin
+  try {
+    routeOrigin = new URL(route.baseURL).origin
+  } catch {
+    // A route without a usable base URL keeps the vendor's hosts only.
+    routeOrigin = undefined
+  }
+  if (routeOrigin === undefined) return vendor
+  return [routeOrigin, ...vendor.filter(origin => origin !== routeOrigin)]
+}
+
+/**
  * The plan of one CommandCode route.
  *
  * The vendor splits its answer over three endpoints: the credit pool with
@@ -170,33 +199,31 @@ async function readJson(url, headers) {
  *
  * @param {object} route - the configured route.
  * @param {object} credential - the route's credential.
+ * @param {string[]} origins - the origins to ask.
  * @returns {Promise<object | null>} the plan, or null when the route has none.
  */
-async function probeCommandcode(route, credential) {
-  let origin = 'https://api.commandcode.ai'
-  try {
-    origin = new URL(route.baseURL).origin
-  } catch {
-    // A route without a usable base URL keeps the default origin.
-  }
+async function probeCommandcode(route, credential, origins) {
   const headers = { authorization: `Bearer ${credential.key}` }
-  const [credits, subscription, summary] = await Promise.all([
-    readJson(`${origin}/alpha/billing/credits`, headers),
-    readJson(`${origin}/alpha/billing/subscriptions`, headers),
-    readJson(`${origin}/alpha/usage/summary`, headers),
-  ])
-  const windows = parseCommandcodeWindows(credits, subscription, summary)
-  if (windows.length === 0) return null
-  const planId = subscription?.data?.planId
-  const tier = typeof planId === 'string' ? COMMANDCODE_PLANS[planId] : undefined
-  return {
-    id: `plan-${route.id}`,
-    provider: route.id,
-    label: tier === undefined
-      ? `CommandCode 套餐 · ${route.id}`
-      : `CommandCode 套餐 · ${route.id}（${tier.name}）`,
-    windows,
+  for (const origin of origins) {
+    const [credits, subscription, summary] = await Promise.all([
+      readJson(`${origin}/alpha/billing/credits`, headers),
+      readJson(`${origin}/alpha/billing/subscriptions`, headers),
+      readJson(`${origin}/alpha/usage/summary`, headers),
+    ])
+    const windows = parseCommandcodeWindows(credits, subscription, summary)
+    if (windows.length === 0) continue
+    const planId = subscription?.data?.planId
+    const tier = typeof planId === 'string' ? COMMANDCODE_PLANS[planId] : undefined
+    return {
+      id: `plan-${route.id}`,
+      provider: route.id,
+      label: tier === undefined
+        ? `CommandCode 套餐 · ${route.id}`
+        : `CommandCode 套餐 · ${route.id}（${tier.name}）`,
+      windows,
+    }
   }
+  return null
 }
 /**
  * The plan windows in one MiniMax answer.
@@ -467,6 +494,7 @@ export const FAMILIES = [
       { host: 'api.minimax.io', pathPrefix: '' },
       { host: 'api.minimax.cn', pathPrefix: '' },
     ],
+    accountOrigins: ['https://api.minimax.cn', 'https://api.minimaxi.com', 'https://api.minimax.io'],
     candidates: origin => [
       { url: `${origin}/v1/api/openplatform/coding_plan/remains`, headers: key => ({ authorization: `Bearer ${key}` }) },
       { url: `${origin}/v1/coding_plan/remains`, headers: key => ({ authorization: key }) },
@@ -478,6 +506,7 @@ export const FAMILIES = [
     label: 'CommandCode 套餐',
     routeIds: ['command', 'command-code', 'commandcode'],
     hosts: [{ host: 'api.commandcode.ai', pathPrefix: '/provider' }],
+    accountOrigins: ['https://api.commandcode.ai'],
     probe: probeCommandcode,
   },
   {
@@ -485,6 +514,7 @@ export const FAMILIES = [
     label: 'Kimi 套餐',
     routeIds: ['kimi-coding'],
     hosts: [{ host: 'api.kimi.com', pathPrefix: '/coding' }],
+    accountOrigins: ['https://api.kimi.com'],
     candidates: origin => [
       { url: `${origin}/coding/v1/usages`, headers: key => ({ authorization: `Bearer ${key}` }) },
     ],
@@ -498,6 +528,7 @@ export const FAMILIES = [
       { host: 'open.bigmodel.cn', pathPrefix: '' },
       { host: 'api.z.ai', pathPrefix: '' },
     ],
+    accountOrigins: ['https://open.bigmodel.cn', 'https://api.z.ai'],
     candidates: origin => [
       { url: `${origin}/api/monitor/usage/quota/limit`, headers: key => ({ authorization: key, 'accept-language': 'en-US,en' }) },
     ],
@@ -508,6 +539,7 @@ export const FAMILIES = [
     label: 'OpenCode 套餐',
     routeIds: ['opencode-go'],
     hosts: [{ host: 'opencode.ai', pathPrefix: '/zen/go' }],
+    accountOrigins: ['https://opencode.ai'],
     candidates: origin => [
       { url: `${origin}/zen/go/v1/usage`, headers: key => ({ authorization: `Bearer ${key}` }) },
     ],
@@ -518,6 +550,7 @@ export const FAMILIES = [
     label: 'Codex 套餐',
     routeIds: ['openai-codex'],
     hosts: [{ host: 'chatgpt.com', pathPrefix: '/backend-api' }],
+    accountOrigins: ['https://chatgpt.com'],
     candidates: origin => [
       {
         url: `${origin}/backend-api/wham/usage`,
@@ -563,6 +596,11 @@ export function planFamily(route) {
 /**
  * The plan of one configured route.
  *
+ * A route whose id and host name a vendor is asked that vendor. A route that
+ * says neither — one that sends its calls through a local relay, say — is
+ * asked every vendor in turn, and the one whose account endpoint accepts the
+ * key is the one it belongs to.
+ *
  * @param {object} route - the configured route.
  * @param {object} credential - the route's credential.
  * @returns {Promise<{ plan: object | null, failed: boolean }>} the plan, and
@@ -570,35 +608,36 @@ export function planFamily(route) {
  *   all is not a failure.
  */
 export async function routePlan(route, credential) {
-  const family = planFamily(route)
-  if (family === null) return { plan: null, failed: false }
-  // A vendor that answers over more than one endpoint brings its own probe.
-  if (typeof family.probe === 'function') {
-    const plan = await family.probe(route, credential)
-    return { plan, failed: plan === null }
-  }
-  let origin = 'https://api.minimax.cn'
-  try {
-    origin = new URL(route.baseURL).origin
-  } catch {
-    // A route without a usable base URL keeps the default origin.
-  }
-  for (const candidate of family.candidates(origin)) {
-    const body = await readJson(candidate.url, candidate.headers(credential.key, credential))
-    const windows = family.parse(body)
-    if (windows.length > 0) {
-      return {
-        plan: {
-          id: `plan-${route.id}`,
-          provider: route.id,
-          label: `${family.label} · ${route.id}`,
-          windows,
-        },
-        failed: false,
+  const known = planFamily(route)
+  const families = known === null ? FAMILIES : [known]
+  for (const family of families) {
+    // A route of an unknown vendor is asked on the vendor's own host only.
+    const origins = familyOrigins(family, route, { known: known !== null })
+    // A vendor that answers over more than one endpoint brings its own probe.
+    if (typeof family.probe === 'function') {
+      const plan = await family.probe(route, credential, origins)
+      if (plan !== null) return { plan, failed: false }
+      continue
+    }
+    for (const origin of origins) {
+      for (const candidate of family.candidates(origin)) {
+        const body = await readJson(candidate.url, candidate.headers(credential.key, credential))
+        const windows = family.parse(body)
+        if (windows.length > 0) {
+          return {
+            plan: {
+              id: `plan-${route.id}`,
+              provider: route.id,
+              label: `${family.label} · ${route.id}`,
+              windows,
+            },
+            failed: false,
+          }
+        }
       }
     }
   }
-  return { plan: null, failed: true }
+  return { plan: null, failed: known !== null }
 }
 
 /**

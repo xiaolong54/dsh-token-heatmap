@@ -13,6 +13,7 @@ import {
   parseKimiWindows,
   parseMinimaxWindows,
   parseOpencodeWindows,
+  familyOrigins,
   planFamily,
   routeSignature,
   windowLabel,
@@ -169,6 +170,20 @@ assert.equal(planFamily({ id: 'qwen', baseURL: 'https://dashscope.aliyuncs.com/c
 assert.equal(planFamily({ id: 'deepseek', baseURL: 'https://api.deepseek.com' }), null)
 assert.equal(planFamily({ id: 'command', baseURL: 'https://api.commandcode.ai/provider/v1' })?.id, 'commandcode')
 assert.equal(planFamily({ id: 'my-command', baseURL: 'https://api.commandcode.ai/provider/v1' })?.id, 'commandcode')
+
+// A route that sends its model calls through a local relay still finds its
+// account on the vendor's own host.
+const relay = { id: 'command', baseURL: 'http://127.0.0.1:9090/v1' }
+const commandOrigins = familyOrigins(planFamily(relay), relay)
+assert.equal(commandOrigins[0], 'http://127.0.0.1:9090', 'the route origin comes first')
+assert.ok(commandOrigins.includes('https://api.commandcode.ai'), 'the vendor host is the fallback')
+
+// A route of an unknown vendor is asked on the vendor's own host only.
+const unknown = { id: 'whatever', baseURL: 'http://127.0.0.1:9090/v1' }
+assert.equal(planFamily(unknown), null, 'the relay names no vendor')
+const unknownOrigins = familyOrigins(planFamily({ id: 'minimax', baseURL: 'https://api.minimax.cn/v1' }), unknown, { known: false })
+assert.equal(unknownOrigins.length, 1, 'only the vendor host is asked')
+assert.equal(unknownOrigins[0], 'https://api.minimax.cn')
 
 // The fingerprint of the routes changes when a route is added.
 const before = routeSignature([{ id: 'mini', baseURL: 'https://api.minimax.cn/v1', apiKeyEnv: 'MINI_API_KEY' }])
