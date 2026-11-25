@@ -15,7 +15,7 @@ export const HEATMAP_CSS = `
 .thm-btn{appearance:none;height:30px;min-width:72px;padding:0 12px;font-size:12px;line-height:20px;border:0.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;font-family:inherit;white-space:nowrap;}
 .thm-btn:hover{background:var(--dsw-alias-interactive-bg-hover);}
 .thm-btn:disabled{opacity:.5;cursor:default;}
-.thm-card{padding:12px 16px;border:0.5px solid var(--dsw-alias-settings-card-stroke);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-settings-card-fill);}
+.thm-card{--thm-card-pad-y:12px;--thm-card-pad-x:16px;padding:var(--thm-card-pad-y) var(--thm-card-pad-x);border:0.5px solid var(--dsw-alias-settings-card-stroke);border-radius:var(--dsw-radius-xl);background:var(--dsw-alias-settings-card-fill);}
 .thm-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px;}
 .thm-card-title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);}
 .thm-card-note{font-size:11px;color:var(--dsw-alias-label-tertiary);}
@@ -38,9 +38,10 @@ export const HEATMAP_CSS = `
 .thm-step:disabled{opacity:.35;cursor:default;}
 .thm-columns{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(0,1fr);gap:16px;align-items:stretch;}
 .thm-heatmap-card{grid-column:1;grid-row:1;}
-.thm-plans-card{grid-column:2;grid-row:1;display:flex;flex-direction:column;min-height:0;}
+.thm-plans-card{grid-column:2;grid-row:1;position:relative;overflow:hidden;--thm-plan-top:calc(var(--thm-card-pad-y) + 22px + 10px);}
+.thm-plans-card .thm-card-head{height:22px;margin-bottom:10px;}
 .thm-models-card{grid-column:1/-1;grid-row:2;}
-@media (max-width:760px){.thm-columns{grid-template-columns:minmax(0,1fr);}.thm-heatmap-card,.thm-plans-card,.thm-models-card{grid-column:1;grid-row:auto;}}
+@media (max-width:760px){.thm-columns{grid-template-columns:minmax(0,1fr);}.thm-heatmap-card,.thm-plans-card,.thm-models-card{grid-column:1;grid-row:auto;}.thm-plans-card{position:static;overflow:visible;}.thm-plan-list{position:static;max-height:340px;}}
 .thm-weekday-row,.thm-month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:360px;margin:0 auto;}
 .thm-weekday{font-size:9px;line-height:10px;color:var(--dsw-alias-label-tertiary);text-align:center;}
 .thm-cell{aspect-ratio:1/1;border-radius:3px;background:transparent;}
@@ -98,7 +99,10 @@ export const HEATMAP_CSS = `
 .thm-window-bar{height:4px;border-radius:999px;background:color-mix(in srgb, var(--dsw-alias-label-primary) 14%, transparent);overflow:hidden;}
 .thm-window-bar i{display:block;height:100%;border-radius:999px;background:var(--dsw-alias-brand-primary);}
 .thm-plan-note{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary);}
-.thm-plan-list{display:flex;flex-direction:column;gap:10px;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding-right:2px;scrollbar-width:thin;}
+/* The plan list is taken out of the flow: the card fills the height of the
+   row, the list scrolls inside it, and the number of plans never decides how
+   tall the heatmap card gets. */
+.thm-plan-list{position:absolute;left:var(--thm-card-pad-x);right:var(--thm-card-pad-x);top:var(--thm-plan-top);bottom:var(--thm-card-pad-y);display:flex;flex-direction:column;gap:10px;overflow-y:auto;overflow-x:hidden;padding-right:2px;scrollbar-width:thin;}
 .thm-plan-block{display:flex;flex-direction:column;gap:5px;padding-bottom:9px;border-bottom:0.5px solid var(--dsw-alias-border-l2);}
 .thm-plan-block:last-child{padding-bottom:0;border-bottom:none;}
 .thm-plan-block-name{font-size:11px;font-weight:600;color:var(--dsw-alias-label-primary);}

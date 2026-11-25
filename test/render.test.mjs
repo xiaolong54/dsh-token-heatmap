@@ -266,10 +266,16 @@ assert.ok(columnsRule !== null, 'the row has one rule')
 assert.ok(columnsRule[0].includes('1.85fr') && columnsRule[0].includes('1fr'), `the heatmap takes the larger share (${columnsRule[0]})`)
 
 // Many plans must not push the page apart: the list scrolls instead.
-const planListRule = artifact.match(/\.thm-plan-list\{[^}]*\}/)
-assert.ok(planListRule !== null, 'the plan list has one rule')
-assert.ok(planListRule[0].includes('overflow-y:auto'), 'the plan list scrolls')
-assert.ok(planListRule[0].includes('min-height:0'), 'the plan list can shrink inside its card')
+const planListRules = [...artifact.matchAll(/\.thm-plan-list\{[^}]*\}/g)].map(match => match[0])
+assert.ok(planListRules.length > 0, 'the plan list has a rule')
+const planListRule = planListRules.find(rule => rule.includes('position:absolute'))
+assert.ok(planListRule !== undefined, 'the plan list leaves the flow on a wide window')
+assert.ok(planListRule.includes('overflow-y:auto'), 'the plan list scrolls')
+// The list leaves the flow, so the number of plans never decides how tall
+// the heatmap card next to it gets.
+const plansCardRule = artifact.match(/\.thm-plans-card\{[^}]*\}/)
+assert.ok(plansCardRule !== null, 'the plans card has one rule')
+assert.ok(plansCardRule[0].includes('position:relative'), 'the plans card holds the list')
 
 // The two cards of the row must end at the same height.
 assert.ok(columnsRule[0].includes('align-items:stretch'), `the cards share one height (${columnsRule[0]})`)
