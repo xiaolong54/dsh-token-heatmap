@@ -160,6 +160,62 @@ async function readJson(url, headers) {
 }
 
 /**
+ * The names of the CommandCode plans.
+ *
+ * The vendor names its plans by an internal id; the names are the ones the
+ * vendor's own CLI shows.
+ */
+const COMMANDCODE_PLANS = {
+  'individual-go': 'Go',
+  'individual-go-v1': 'Go',
+  'individual-goat': 'GOAT',
+  'individual-pro': 'Pro',
+  'individual-pro-v1': 'Pro',
+  'individual-provider': 'Provider',
+  'individual-max': 'Max',
+  'individual-ultra': 'Ultra',
+  'teams-pro': 'Teams Pro',
+}
+
+/**
+ * The plan of one CommandCode route.
+ *
+ * The vendor splits its answer over three endpoints: the credit pool with
+ * the window limits, the subscription with the period, and the spending of
+ * the period.
+ *
+ * @param {object} route - the configured route.
+ * @param {object} credential - the route's credential.
+ * @returns {Promise<object | null>} the plan, or null when the route has none.
+ */
+async function probeCommandcode(route, credential) {
+  let origin = 'https://api.commandcode.ai'
+  try {
+    origin = new URL(route.baseURL).origin
+  } catch {
+    // A route without a usable base URL keeps the default origin.
+  }
+  const headers = { authorization: `Bearer ${credential.key}` }
+  const [credits, subscription, summary] = await Promise.all([
+    readJson(`${origin}/alpha/billing/credits`, headers),
+    readJson(`${origin}/alpha/billing/subscriptions`, headers),
+    readJson(`${origin}/alpha/usage/summary`, headers),
+  ])
+  const windows = parseCommandcodeWindows(credits, subscription, summary)
+  if (windows.length === 0) return null
+  const planId = subscription?.data?.planId
+  const planName = typeof planId === 'string' ? COMMANDCODE_PLANS[planId] : undefined
+  return {
+    id: `plan-${route.id}`,
+    provider: route.id,
+    label: planName === undefined
+      ? `CommandCode 套餐 · ${route.id}`
+      : `CommandCode 套餐 · ${route.id}（${planName}）`,
+    windows,
+  }
+}
+
+/**
  * The plan windows in one MiniMax answer.
  *
  * @param {object} body - the provider's answer.
@@ -331,11 +387,57 @@ export function parseCodexWindows(body) {
 }
 
 /**
+ * The plan windows in one CommandCode answer.
+ *
+ * CommandCode answers three questions in three endpoints: the credit pool,
+ * the subscription and the spending of the period. The windows are credits,
+ * not a percentage the provider sends, so the share is computed here.
+ *
+ * @param {object} credits - the answer of the billing-credits endpoint.
+ * @param {object} subscription - the answer of the subscriptions endpoint.
+ * @param {object} summary - the answer of the usage-summary endpoint.
+ * @returns {object[]} the windows.
+ */
+export function parseCommandcodeWindows(credits, subscription, summary) {
+  const windows = []
+  const limits = credits?.windowLimits
+  const rows = [['fiveHour', '5h'], ['weekly', 'week']]
+  for (const [field, key] of rows) {
+    const row = limits?.[field]
+    if (row === null || typeof row !== 'object') continue
+    const cap = Number(row.cap)
+    const used = Number(row.used)
+    if (!Number.isFinite(cap) || cap <= 0 || !Number.isFinite(used)) continue
+    windows.push(usedWindow({
+      key,
+      name: windowLabel(key),
+      used: (100 * used) / cap,
+      resetsAt: parseTime(row.resetAt),
+    }))
+  }
+  const pool = credits?.credits
+  const monthly = Number(pool?.monthlyCredits)
+  const extra = Number(pool?.purchasedCredits ?? 0) + Number(pool?.freeCredits ?? 0)
+  const total = (Number.isFinite(monthly) ? monthly : 0) + (Number.isFinite(extra) ? extra : 0)
+  const spent = Number(summary?.totalCost)
+  if (total > 0 && Number.isFinite(spent)) {
+    windows.push(usedWindow({
+      key: 'month',
+      name: windowLabel('month'),
+      used: (100 * spent) / total,
+      resetsAt: parseTime(subscription?.data?.currentPeriodEnd),
+    }))
+  }
+  return windows
+}
+
+/**
  * The plan families the Host can read.
  *
  * `routeIds` names the harness's own provider ids; `hosts` names the vendor
  * endpoints a custom route id may point at. `candidates` says where to ask
- * and how to authenticate, `parse` reads the answer.
+ * and how to authenticate, `parse` reads the answer. A family that needs
+ * more than one endpoint brings its own `probe` instead.
  */
 export const FAMILIES = [
   {
@@ -352,6 +454,13 @@ export const FAMILIES = [
       { url: `${origin}/v1/coding_plan/remains`, headers: key => ({ authorization: key }) },
     ],
     parse: parseMinimaxWindows,
+  },
+  {
+    id: 'commandcode',
+    label: 'CommandCode 套餐',
+    routeIds: ['command', 'command-code', 'commandcode'],
+    hosts: [{ host: 'api.commandcode.ai', pathPrefix: '/provider' }],
+    probe: probeCommandcode,
   },
   {
     id: 'kimi',
@@ -443,6 +552,8 @@ export function planFamily(route) {
 export async function routePlan(route, credential) {
   const family = planFamily(route)
   if (family === null) return null
+  // A vendor that answers over more than one endpoint brings its own probe.
+  if (typeof family.probe === 'function') return family.probe(route, credential)
   let origin = 'https://api.minimax.cn'
   try {
     origin = new URL(route.baseURL).origin
@@ -462,6 +573,23 @@ export async function routePlan(route, credential) {
     }
   }
   return null
+}
+
+/**
+ * The fingerprint of the configured routes.
+ *
+ * The fingerprint changes when a route is added, removed or repointed, so
+ * the Host knows that the plan rows it holds are out of date even when they
+ * are still young.
+ *
+ * @param {object[]} routes - the configured routes.
+ * @returns {string} the fingerprint.
+ */
+export function routeSignature(routes) {
+  return routes
+    .map(route => `${route.id}|${route.baseURL ?? ''}|${route.apiKeyEnv ?? ''}`)
+    .sort()
+    .join('\n')
 }
 
 /**

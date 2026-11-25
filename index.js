@@ -17,7 +17,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { probePlans } from './plans.js'
+import { probePlans, configuredRoutes, routeSignature } from './plans.js'
 
 /** Cordis function-plugin name. */
 export const name = 'token-heatmap'
@@ -35,7 +35,7 @@ const REFRESH_INTERVAL_MS = 20_000
 const FULL_REFRESH_INTERVAL_MS = 10 * 60_000
 
 /** How old a plan row may be before the providers are asked again. */
-const PLAN_STALE_MS = 60_000
+const PLAN_STALE_MS = 30_000
 
 /**
  * The folder the ledger lives in.
@@ -298,6 +298,7 @@ function createUsageRefresher(ctx, ledger) {
 function createPlanProbe(ctx, ledger) {
   let inFlight = null
   let lastAttempt = 0
+  let signature = ''
 
   /**
    * Ask the providers once and keep the rows that answer.
@@ -323,14 +324,24 @@ function createPlanProbe(ctx, ledger) {
   /**
    * Ask the providers when the known rows are older than the given age.
    *
+   * A route that was added to the profile makes the rows out of date right
+   * away, so a new plan shows up on the next read instead of on the next
+   * full tick.
+   *
    * @param {number} maxAgeMs - how old a row may be.
+   * @param {boolean} force - whether to ask even when the rows are fresh.
    * @returns {Promise<void>} after the probe settled, or right away.
    */
-  const ensureFresh = async (maxAgeMs) => {
-    const known = Math.max(ledger.plansAt, lastAttempt)
-    if (Date.now() - known < maxAgeMs) return
+  const ensureFresh = async (maxAgeMs, force = false) => {
+    const current = routeSignature(configuredRoutes(ctx))
+    const changed = current !== signature
+    if (!force && !changed) {
+      const known = Math.max(ledger.plansAt, lastAttempt)
+      if (Date.now() - known < maxAgeMs) return
+    }
     if (inFlight !== null) return inFlight
     lastAttempt = Date.now()
+    signature = current
     inFlight = run().finally(() => { inFlight = null })
     return inFlight
   }
@@ -370,7 +381,12 @@ function registerUsageRoute(ctx, ledger, refresher, probe) {
       res.setHeader('cache-control', 'no-store')
       res.end(JSON.stringify(body))
       // The answer is already on its way; the next refresh only updates it.
-      if (typeof req.url === 'string' && req.url.includes('fresh=1')) void refresher.refresh(false)
+      const fresh = typeof req.url === 'string' && req.url.includes('fresh=1')
+      if (fresh) {
+        void refresher.refresh(false)
+        // A plan that was added to the profile shows up at once.
+        void probe.ensureFresh(PLAN_STALE_MS, true)
+      }
       // Stale rows are refreshed in the background, so the next read is fresh.
       void probe.ensureFresh(PLAN_STALE_MS)
     },
@@ -393,7 +409,7 @@ function startBackgroundRefresh(refresher, probe) {
     const full = ticks * REFRESH_INTERVAL_MS >= FULL_REFRESH_INTERVAL_MS
     if (full) ticks = 0
     void refresher.refresh(full)
-    if (planTicks % 3 === 0) {
+    if (planTicks % 2 === 0) {
       planTicks = 0
       void probe.ensureFresh(PLAN_STALE_MS)
     }

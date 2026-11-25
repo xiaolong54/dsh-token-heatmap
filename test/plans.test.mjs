@@ -8,11 +8,13 @@
 import assert from 'node:assert/strict'
 import {
   parseCodexWindows,
+  parseCommandcodeWindows,
   parseGlmWindows,
   parseKimiWindows,
   parseMinimaxWindows,
   parseOpencodeWindows,
   planFamily,
+  routeSignature,
   windowLabel,
 } from '../plans.js'
 
@@ -111,6 +113,34 @@ assert.equal(codexWindows[0].used, 20)
 assert.equal(codexWindows[1].name, '周窗口')
 assert.equal(codexWindows[1].used, 70)
 
+// The CommandCode answer: the window limits are credits, the monthly window
+// is the spending of the period over the credit pool.
+const commandcode = parseCommandcodeWindows(
+  {
+    credits: { monthlyCredits: 10, purchasedCredits: 0, freeCredits: 0 },
+    windowLimits: {
+      limited: true,
+      fiveHour: { used: 1.5, cap: 3, exceeded: false, resetAt: 1795622400000 },
+      weekly: { used: 6, cap: 6, exceeded: true, resetAt: 1795968000000 },
+    },
+  },
+  { data: { planId: 'individual-go-v1', currentPeriodEnd: '2026-12-25T14:44:30.000Z' } },
+  { totalCost: 2.5 },
+)
+assert.equal(commandcode.length, 3, 'the two windows and the monthly pool were read')
+assert.equal(commandcode[0].key, '5h')
+assert.equal(commandcode[0].name, '5 小时窗口')
+assert.equal(commandcode[0].used, 50)
+assert.equal(commandcode[0].remaining, 50)
+assert.equal(commandcode[0].resetsAt, 1795622400000)
+assert.equal(commandcode[1].key, 'week')
+assert.equal(commandcode[1].used, 100)
+assert.equal(commandcode[1].remaining, 0)
+assert.equal(commandcode[2].key, 'month')
+assert.equal(commandcode[2].used, 25)
+assert.equal(commandcode[2].resetsAt, Date.parse('2026-12-25T14:44:30.000Z'))
+assert.deepEqual(parseCommandcodeWindows(null, null, null), [])
+
 // The family follows the route id, or the vendor endpoint behind a custom id.
 assert.equal(planFamily({ id: 'minimax-cn', baseURL: 'https://api.minimaxi.com/anthropic' })?.id, 'minimax')
 assert.equal(planFamily({ id: 'kimi-coding', baseURL: 'https://api.kimi.com/coding/v1' })?.id, 'kimi')
@@ -121,6 +151,17 @@ assert.equal(planFamily({ id: 'my-mini', baseURL: 'https://api.minimax.cn/v1' })
 assert.equal(planFamily({ id: 'kimi-2', baseURL: 'https://api.kimi.com/coding/v1' })?.id, 'kimi')
 assert.equal(planFamily({ id: 'qwen', baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1' }), null)
 assert.equal(planFamily({ id: 'deepseek', baseURL: 'https://api.deepseek.com' }), null)
+assert.equal(planFamily({ id: 'command', baseURL: 'https://api.commandcode.ai/provider/v1' })?.id, 'commandcode')
+assert.equal(planFamily({ id: 'my-command', baseURL: 'https://api.commandcode.ai/provider/v1' })?.id, 'commandcode')
+
+// The fingerprint of the routes changes when a route is added.
+const before = routeSignature([{ id: 'mini', baseURL: 'https://api.minimax.cn/v1', apiKeyEnv: 'MINI_API_KEY' }])
+const after = routeSignature([
+  { id: 'mini', baseURL: 'https://api.minimax.cn/v1', apiKeyEnv: 'MINI_API_KEY' },
+  { id: 'command', baseURL: 'https://api.commandcode.ai/provider/v1', apiKeyEnv: 'COMMAND_API_KEY' },
+])
+assert.notEqual(before, after, 'a new route changes the fingerprint')
+assert.equal(routeSignature([]), '')
 
 assert.equal(windowLabel('week'), '周窗口')
 assert.equal(windowLabel('month'), '月窗口')

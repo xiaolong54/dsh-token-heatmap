@@ -63,6 +63,7 @@ function PlanPanel(props) {
         type: 'button',
         className: 'thm-plan-toggle',
         'aria-expanded': open,
+        title: plan.label,
         onClick: () => setOpen(!open),
       },
       h('span', { className: 'thm-plan-name' }, plan.label),

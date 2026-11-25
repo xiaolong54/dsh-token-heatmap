@@ -75,10 +75,20 @@ resolves.
 | Vendor | Endpoint | Windows |
 |---|---|---|
 | MiniMax | `…/v1/api/openplatform/coding_plan/remains` | the 5-hour interval window and the weekly window |
+| CommandCode | `…/alpha/billing/credits` + `…/alpha/billing/subscriptions` + `…/alpha/usage/summary` | the 5-hour window, the weekly window and the monthly credit pool |
 | Kimi For Coding | `…/coding/v1/usages` | one bar per limit row, plus the weekly summary |
 | GLM / Z.ai | `…/api/monitor/usage/quota/limit` | one bar per quota unit (5-hour, week, month) |
 | OpenCode Go | `…/zen/go/v1/usage` | rolling, weekly and monthly |
 | Codex / ChatGPT | `…/backend-api/wham/usage` | the rate-limit windows the subscription reports |
+
+### A plan that was added later
+
+The Host fingerprints the configured routes — their ids, base URLs and key
+references — and compares that fingerprint with the one it holds. A route
+that was added to the profile makes the fingerprint differ, so the plan rows
+are stale and the next read asks the providers again; the new plan shows up
+without a restart. The refresh button asks the providers right away, without
+waiting for the next poll.
 
 ### Vendors without an open quota endpoint
 

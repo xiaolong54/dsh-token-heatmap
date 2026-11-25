@@ -58,7 +58,11 @@ one the card shows.
   today cost and the plan the user picked.
 - **Vendor registry** (`plans.js`): one entry per coding-plan vendor, with
   the endpoint, the authentication and the parsing. Covered today: MiniMax,
-  Kimi For Coding, GLM / Z.ai, OpenCode Go and Codex / ChatGPT.
+  CommandCode, Kimi For Coding, GLM / Z.ai, OpenCode Go and Codex / ChatGPT.
+- **A plan that shows up on its own**: the Host fingerprints the configured
+  routes, so a route that was added to the profile makes the plan rows stale
+  and the next read asks the providers again. The refresh button asks them
+  right away.
 
 ## A start that is honest
 
