@@ -99,6 +99,7 @@ export const HEATMAP_CSS = `
 .thm-window-bar{height:4px;border-radius:999px;background:color-mix(in srgb, var(--dsw-alias-label-primary) 14%, transparent);overflow:hidden;}
 .thm-window-bar i{display:block;height:100%;border-radius:999px;background:var(--dsw-alias-brand-primary);}
 .thm-plan-note{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary);}
+.thm-plan-stale{font-size:10px;line-height:14px;color:var(--dsw-alias-state-error-primary);}
 /* The plan list is taken out of the flow: the card fills the height of the
    row, the list scrolls inside it, and the number of plans never decides how
    tall the heatmap card gets. */

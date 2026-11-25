@@ -8,7 +8,7 @@
 
 import { HEATMAP_CSS } from './styles.js'
 import { formatDay, summarize } from './heatmap.js'
-import { formatTokens, remainingSpan, resetTime, spanText } from './format.js'
+import { formatTokens, barWidth, remainingPercent, remainingSpan, resetTime, spanText } from './format.js'
 import { planNote } from './plans.js'
 import { useUsage } from './usage.js'
 
@@ -28,8 +28,8 @@ export function SideWindowRow(props) {
   return h('div', { className: 'thm-window', title: resets === '' ? undefined : t('resetsAt', { time: resets }) },
     h('div', { className: 'thm-window-head' },
       h('span', { className: 'thm-window-name' }, planWindow.name),
-      h('span', { className: 'thm-window-value' }, t('windowRemaining', { percent: Math.round(planWindow.remaining) }))),
-    h('div', { className: 'thm-window-bar' }, h('i', { style: { width: `${Math.round(planWindow.used)}%` } })),
+      h('span', { className: 'thm-window-value' }, t('windowRemaining', { percent: remainingPercent(planWindow.remaining) }))),
+    h('div', { className: 'thm-window-bar' }, h('i', { style: { width: barWidth(planWindow.used) } })),
     note === null ? null : h('div', { className: 'thm-plan-note' }, note))
 }
 

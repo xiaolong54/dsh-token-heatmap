@@ -51,6 +51,7 @@ const zh = {
   'noPlans': '未连接可查询余量的套餐',
   'checkingPlans': '正在读取套餐…',
   'plansFailed': '套餐读取失败，稍后重试',
+  'planStale': '读取失败，下面是上次的结果',
   'windowRemaining': '剩 {percent}%',
   'resetsAt': '{time} 重置',
   'resetsIn': '{span}后重置（{time}）',
@@ -96,6 +97,7 @@ const en = {
   'noPlans': 'No plan with a queryable remainder',
   'checkingPlans': 'Reading plans…',
   'plansFailed': 'Could not read the plans, retrying',
+  'planStale': 'Could not be read, this is the last known result',
   'windowRemaining': '{percent}% left',
   'resetsAt': 'resets at {time}',
   'resetsIn': 'resets in {span} ({time})',
@@ -248,6 +250,7 @@ const HEATMAP_CSS = `
 .thm-window-bar{height:4px;border-radius:999px;background:color-mix(in srgb, var(--dsw-alias-label-primary) 14%, transparent);overflow:hidden;}
 .thm-window-bar i{display:block;height:100%;border-radius:999px;background:var(--dsw-alias-brand-primary);}
 .thm-plan-note{font-size:10px;line-height:14px;color:var(--dsw-alias-label-tertiary);}
+.thm-plan-stale{font-size:10px;line-height:14px;color:var(--dsw-alias-state-error-primary);}
 /* The plan list is taken out of the flow: the card fills the height of the
    row, the list scrolls inside it, and the number of plans never decides how
    tall the heatmap card gets. */
@@ -319,6 +322,40 @@ function resetTime(resetsAt, withDate = false) {
     ? { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }
     : { hour: '2-digit', minute: '2-digit' }
   return new Date(resetsAt).toLocaleString('zh-CN', options)
+}
+
+/**
+ * The percentage of a window that is left.
+ *
+ * A window that was barely touched must not read as a full one, so a share
+ * that is not exactly zero or full keeps one decimal.
+ *
+ * @param {number} remaining - the share that is left, 0 to 100.
+ * @returns {string} the percentage text.
+ */
+function remainingPercent(remaining) {
+  const value = Number(remaining ?? 0)
+  if (!Number.isFinite(value)) return '0'
+  if (value > 99.9 && value < 100) return '99.9'
+  if (value > 0 && value < 0.1) return '<0.1'
+  if (value > 0 && value < 99.9) return value.toFixed(1)
+  return `${Math.round(value)}`
+}
+
+/**
+ * The width of a window's bar.
+ *
+ * A window that was used a little still has to show a sliver, otherwise the
+ * bar looks empty and the card looks frozen.
+ *
+ * @param {number} used - the used share, 0 to 100.
+ * @returns {string} the width.
+ */
+function barWidth(used) {
+  const value = Number(used ?? 0)
+  if (!Number.isFinite(value) || value <= 0) return '0%'
+  if (value >= 100) return '100%'
+  return `max(2px, ${value.toFixed(2)}%)`
 }
 
 /**
@@ -814,15 +851,17 @@ function PlanWindowRow(props) {
   const { planWindow, t } = props
   const resets = resetTime(planWindow.resetsAt, true)
   const span = spanText(remainingSpan(planWindow.resetsAt), t)
-  const note = span === ''
+  const resetNote = span === ''
     ? (resets === '' ? null : t('resetsAt', { time: resets }))
     : t('resetsIn', { span, time: resets })
+  const notes = [planWindow.detail, resetNote].filter(part => part !== undefined && part !== null)
   return h('div', { className: 'thm-window' },
     h('div', { className: 'thm-window-head' },
       h('span', { className: 'thm-window-name' }, planWindow.name),
-      h('span', { className: 'thm-window-value' }, t('windowRemaining', { percent: Math.round(planWindow.remaining) }))),
-    h('div', { className: 'thm-window-bar' }, h('i', { style: { width: `${Math.round(planWindow.used)}%` } })),
-    note === null ? null : h('div', { className: 'thm-plan-note' }, note))
+      h('span', { className: 'thm-window-value' },
+        t('windowRemaining', { percent: remainingPercent(planWindow.remaining) }))),
+    h('div', { className: 'thm-window-bar' }, h('i', { style: { width: barWidth(planWindow.used) } })),
+    notes.length === 0 ? null : h('div', { className: 'thm-plan-note' }, notes.join(' · ')))
 }
 
 /**
@@ -868,6 +907,7 @@ function PlansCard(props) {
     h('div', { className: 'thm-plan-list' },
       plans.map(plan => h('div', { key: plan.id, className: 'thm-plan-block' },
         h('div', { className: 'thm-plan-block-name', title: plan.label }, plan.label),
+        plan.stale === true ? h('div', { className: 'thm-plan-stale' }, t('planStale')) : null,
         plan.windows.map(planWindow => PlanWindowRow({ planWindow, t }))))))
 }
 
@@ -1171,8 +1211,8 @@ function SideWindowRow(props) {
   return h('div', { className: 'thm-window', title: resets === '' ? undefined : t('resetsAt', { time: resets }) },
     h('div', { className: 'thm-window-head' },
       h('span', { className: 'thm-window-name' }, planWindow.name),
-      h('span', { className: 'thm-window-value' }, t('windowRemaining', { percent: Math.round(planWindow.remaining) }))),
-    h('div', { className: 'thm-window-bar' }, h('i', { style: { width: `${Math.round(planWindow.used)}%` } })),
+      h('span', { className: 'thm-window-value' }, t('windowRemaining', { percent: remainingPercent(planWindow.remaining) }))),
+    h('div', { className: 'thm-window-bar' }, h('i', { style: { width: barWidth(planWindow.used) } })),
     note === null ? null : h('div', { className: 'thm-plan-note' }, note))
 }
 

@@ -44,11 +44,13 @@ export function windowLabel(key, seconds) {
  * @param {string} input.name - the window's display name.
  * @param {number} input.used - the used percentage, 0 to 100.
  * @param {number} [input.resetsAt] - the reset time in epoch milliseconds.
+ * @param {string} [input.detail] - the provider's own numbers, when it has
+ *   a unit the percentage hides.
  * @returns {object} the window.
  */
-function usedWindow({ key, name, used, resetsAt }) {
+function usedWindow({ key, name, used, resetsAt, detail }) {
   const clamped = Math.max(0, Math.min(100, used))
-  return { key, name, used: clamped, remaining: 100 - clamped, resetsAt }
+  return { key, name, used: clamped, remaining: 100 - clamped, resetsAt, detail }
 }
 
 /**
@@ -160,24 +162,6 @@ async function readJson(url, headers) {
 }
 
 /**
- * The names of the CommandCode plans.
- *
- * The vendor names its plans by an internal id; the names are the ones the
- * vendor's own CLI shows.
- */
-const COMMANDCODE_PLANS = {
-  'individual-go': 'Go',
-  'individual-go-v1': 'Go',
-  'individual-goat': 'GOAT',
-  'individual-pro': 'Pro',
-  'individual-pro-v1': 'Pro',
-  'individual-provider': 'Provider',
-  'individual-max': 'Max',
-  'individual-ultra': 'Ultra',
-  'teams-pro': 'Teams Pro',
-}
-
-/**
  * The plan of one CommandCode route.
  *
  * The vendor splits its answer over three endpoints: the credit pool with
@@ -204,17 +188,16 @@ async function probeCommandcode(route, credential) {
   const windows = parseCommandcodeWindows(credits, subscription, summary)
   if (windows.length === 0) return null
   const planId = subscription?.data?.planId
-  const planName = typeof planId === 'string' ? COMMANDCODE_PLANS[planId] : undefined
+  const tier = typeof planId === 'string' ? COMMANDCODE_PLANS[planId] : undefined
   return {
     id: `plan-${route.id}`,
     provider: route.id,
-    label: planName === undefined
+    label: tier === undefined
       ? `CommandCode 套餐 · ${route.id}`
-      : `CommandCode 套餐 · ${route.id}（${planName}）`,
+      : `CommandCode 套餐 · ${route.id}（${tier.name}）`,
     windows,
   }
 }
-
 /**
  * The plan windows in one MiniMax answer.
  *
@@ -387,11 +370,32 @@ export function parseCodexWindows(body) {
 }
 
 /**
+ * The names and the allowances of the CommandCode plans.
+ *
+ * The vendor names its plans by an internal id and reports how many credits
+ * are left, not how many the plan has. The allowance is what turns the
+ * remaining credits into a share.
+ */
+const COMMANDCODE_PLANS = {
+  'individual-go': { name: 'Go', credits: 10 },
+  'individual-go-v1': { name: 'Go', credits: 10 },
+  'individual-goat': { name: 'GOAT', credits: 70 },
+  'individual-pro': { name: 'Pro', credits: 30 },
+  'individual-pro-v1': { name: 'Pro', credits: 80 },
+  'individual-provider': { name: 'Provider', credits: 15 },
+  'individual-max': { name: 'Max', credits: 150 },
+  'individual-ultra': { name: 'Ultra', credits: 300 },
+  'teams-pro': { name: 'Teams Pro', credits: 40 },
+}
+
+/**
  * The plan windows in one CommandCode answer.
  *
  * CommandCode answers three questions in three endpoints: the credit pool,
  * the subscription and the spending of the period. The windows are credits,
- * not a percentage the provider sends, so the share is computed here.
+ * not a percentage the provider sends, so the share is computed here. The
+ * credit amounts travel with the window, because a share of a few percent
+ * says nothing about how much is left.
  *
  * @param {object} credits - the answer of the billing-credits endpoint.
  * @param {object} subscription - the answer of the subscriptions endpoint.
@@ -413,19 +417,33 @@ export function parseCommandcodeWindows(credits, subscription, summary) {
       name: windowLabel(key),
       used: (100 * used) / cap,
       resetsAt: parseTime(row.resetAt),
+      detail: `$${used.toFixed(2)} / $${cap.toFixed(2)}`,
     }))
   }
   const pool = credits?.credits
   const monthly = Number(pool?.monthlyCredits)
-  const extra = Number(pool?.purchasedCredits ?? 0) + Number(pool?.freeCredits ?? 0)
-  const total = (Number.isFinite(monthly) ? monthly : 0) + (Number.isFinite(extra) ? extra : 0)
+  const purchased = Number(pool?.purchasedCredits ?? 0)
+  const free = Number(pool?.freeCredits ?? 0)
+  const remaining = (Number.isFinite(monthly) ? monthly : 0)
+    + (Number.isFinite(purchased) ? purchased : 0)
+    + (Number.isFinite(free) ? free : 0)
   const spent = Number(summary?.totalCost)
-  if (total > 0 && Number.isFinite(spent)) {
+  const tier = COMMANDCODE_PLANS[subscription?.data?.planId]
+  // The pool is the plan's allowance; without a known plan the spending and
+  // what is left add up to it.
+  const total = tier === undefined
+    ? (Number.isFinite(spent) ? spent : 0) + remaining
+    : Math.max(tier.credits, Number.isFinite(monthly) ? monthly : 0)
+      + (Number.isFinite(purchased) ? purchased : 0)
+      + (Number.isFinite(free) ? free : 0)
+  if (total > 0) {
+    const used = total - remaining
     windows.push(usedWindow({
       key: 'month',
       name: windowLabel('month'),
-      used: (100 * spent) / total,
+      used: (100 * used) / total,
       resetsAt: parseTime(subscription?.data?.currentPeriodEnd),
+      detail: `$${used.toFixed(2)} / $${total.toFixed(2)}`,
     }))
   }
   return windows
@@ -547,13 +565,18 @@ export function planFamily(route) {
  *
  * @param {object} route - the configured route.
  * @param {object} credential - the route's credential.
- * @returns {Promise<object | null>} the plan, or null when the route has none.
+ * @returns {Promise<{ plan: object | null, failed: boolean }>} the plan, and
+ *   whether the provider stopped answering. A route that carries no plan at
+ *   all is not a failure.
  */
 export async function routePlan(route, credential) {
   const family = planFamily(route)
-  if (family === null) return null
+  if (family === null) return { plan: null, failed: false }
   // A vendor that answers over more than one endpoint brings its own probe.
-  if (typeof family.probe === 'function') return family.probe(route, credential)
+  if (typeof family.probe === 'function') {
+    const plan = await family.probe(route, credential)
+    return { plan, failed: plan === null }
+  }
   let origin = 'https://api.minimax.cn'
   try {
     origin = new URL(route.baseURL).origin
@@ -565,14 +588,17 @@ export async function routePlan(route, credential) {
     const windows = family.parse(body)
     if (windows.length > 0) {
       return {
-        id: `plan-${route.id}`,
-        provider: route.id,
-        label: `${family.label} · ${route.id}`,
-        windows,
+        plan: {
+          id: `plan-${route.id}`,
+          provider: route.id,
+          label: `${family.label} · ${route.id}`,
+          windows,
+        },
+        failed: false,
       }
     }
   }
-  return null
+  return { plan: null, failed: true }
 }
 
 /**
@@ -595,15 +621,23 @@ export function routeSignature(routes) {
 /**
  * The plans of every route that answers.
  *
+ * The result names the routes that stopped answering, so the Host can say
+ * that a row is the last known one instead of passing it off as fresh.
+ *
  * @param {object} ctx - the Host plugin context.
- * @returns {Promise<object[]>} the plans.
+ * @returns {Promise<{ plans: object[], failed: string[] }>} the plans and the
+ *   routes that did not answer.
  */
 export async function probePlans(ctx) {
   const routes = configuredRoutes(ctx)
   const probed = await Promise.all(routes.map(async (route) => {
     const credential = await routeCredential(ctx, route)
-    if (credential === null) return null
-    return routePlan(route, credential)
+    if (credential === null) return { route, plan: null, failed: false }
+    const answer = await routePlan(route, credential)
+    return { route, plan: answer.plan, failed: answer.failed }
   }))
-  return probed.filter(plan => plan !== null)
+  return {
+    plans: probed.filter(row => row.plan !== null).map(row => row.plan),
+    failed: probed.filter(row => row.failed).map(row => row.route.id),
+  }
 }

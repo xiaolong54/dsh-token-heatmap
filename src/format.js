@@ -60,6 +60,40 @@ export function resetTime(resetsAt, withDate = false) {
 }
 
 /**
+ * The percentage of a window that is left.
+ *
+ * A window that was barely touched must not read as a full one, so a share
+ * that is not exactly zero or full keeps one decimal.
+ *
+ * @param {number} remaining - the share that is left, 0 to 100.
+ * @returns {string} the percentage text.
+ */
+export function remainingPercent(remaining) {
+  const value = Number(remaining ?? 0)
+  if (!Number.isFinite(value)) return '0'
+  if (value > 99.9 && value < 100) return '99.9'
+  if (value > 0 && value < 0.1) return '<0.1'
+  if (value > 0 && value < 99.9) return value.toFixed(1)
+  return `${Math.round(value)}`
+}
+
+/**
+ * The width of a window's bar.
+ *
+ * A window that was used a little still has to show a sliver, otherwise the
+ * bar looks empty and the card looks frozen.
+ *
+ * @param {number} used - the used share, 0 to 100.
+ * @returns {string} the width.
+ */
+export function barWidth(used) {
+  const value = Number(used ?? 0)
+  if (!Number.isFinite(value) || value <= 0) return '0%'
+  if (value >= 100) return '100%'
+  return `max(2px, ${value.toFixed(2)}%)`
+}
+
+/**
  * The time left until a window resets.
  *
  * @param {number | undefined} resetsAt - epoch milliseconds.

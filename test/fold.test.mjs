@@ -113,8 +113,24 @@ writeFileSync(join(profile, 'dsh-token-heatmap', 'ledger.json'), JSON.stringify(
 
 // The provider probe is slow on a start: hold the answer back so the test
 // can look at the state the browser sees before the providers reply.
-let answerProbe
-globalThis.fetch = () => new Promise((resolve) => { answerProbe = resolve })
+let pending = []
+globalThis.fetch = () => new Promise((resolve) => { pending.push(resolve) })
+
+/** Answer every request that is waiting. */
+function answerAll(response) {
+  const waiting = pending
+  pending = []
+  for (const resolve of waiting) resolve(response)
+}
+
+/** Answer every request that waits, over as many rounds as the vendor needs. */
+async function answerAllRounds(response) {
+  for (let round = 0; round < 6; round += 1) {
+    await settle()
+    if (pending.length === 0) return
+    answerAll(response)
+  }
+}
 
 let handler
 apply(fakeServices(route => { handler = route.handler }))
@@ -146,7 +162,7 @@ assert.equal(payload.plans[0].windows[0].remaining, 60)
 assert.equal(payload.plansReady, true, 'the Host already looked for plans')
 
 // Now the provider answers: its row joins the restored ones.
-answerProbe({ ok: true, json: async () => MINIMAX_ANSWER })
+answerAll({ ok: true, json: async () => MINIMAX_ANSWER })
 await settle()
 
 const fresh = await readRoute(handler)
@@ -159,9 +175,7 @@ assert.equal(fresh.plans[1].windows[1].remaining, 80)
 
 process.env.DSH_PROFILE_DIR = mkdtempSync(join(tmpdir(), 'dsh-token-heatmap-'))
 
-let answerProbeFresh
-globalThis.fetch = () => new Promise((resolve) => { answerProbeFresh = resolve })
-
+pending = []
 let handlerFresh
 apply(fakeServices(route => { handlerFresh = route.handler }))
 await settle()
@@ -170,13 +184,24 @@ const empty = await readRoute(handlerFresh)
 assert.equal(empty.plans.length, 0, 'no plan rows yet')
 assert.equal(empty.plansReady, false, 'the Host is still looking for plans')
 
-answerProbeFresh({ ok: true, json: async () => MINIMAX_ANSWER })
+answerAll({ ok: true, json: async () => MINIMAX_ANSWER })
 await settle()
 
 const answered = await readRoute(handlerFresh)
 assert.equal(answered.plansReady, true, 'the Host says it looked for plans')
 assert.equal(answered.plans.length, 1, 'the provider row arrived')
 assert.equal(answered.plans[0].id, 'plan-minimax')
+assert.equal(answered.plans[0].stale, false, 'the row is fresh')
+
+// --- A provider that stops answering: the row says it is the last one ---
+
+// The probe only runs when the rows are stale, so ask for a fresh one. The
+// provider answers with an error now, on every candidate it tries.
+await handlerFresh({ method: 'GET', url: '/token-heatmap/usage?fresh=1' }, response)
+await answerAllRounds({ ok: false, status: 401, json: async () => ({}) })
+const stale = await readRoute(handlerFresh)
+assert.equal(stale.plans.length, 1, 'the last known row is still there')
+assert.equal(stale.plans[0].stale, true, 'the row says it is the last known result')
 
 console.log('fold test passed')
 

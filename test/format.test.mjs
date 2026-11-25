@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { remainingSpan, spanText } from '../src/format.js'
+import { barWidth, remainingPercent, remainingSpan, spanText } from '../src/format.js'
 
 const NOW = Date.parse('2026-11-24T12:00:00+08:00')
 const DAY = 86_400_000
@@ -30,5 +30,19 @@ assert.equal(spanText(remainingSpan(NOW + 2 * DAY, NOW), t), 'span.days:2')
 assert.equal(remainingSpan(NOW - 1000, NOW), null)
 assert.equal(remainingSpan(undefined, NOW), null)
 assert.equal(spanText(null, t), '')
+
+// A window that was barely touched must not read as a full one.
+assert.equal(remainingPercent(100), '100')
+assert.equal(remainingPercent(0), '0')
+assert.equal(remainingPercent(99.857), '99.9')
+assert.equal(remainingPercent(99.999), '99.9')
+assert.equal(remainingPercent(0.05), '<0.1')
+assert.equal(remainingPercent(63.4), '63.4')
+
+// A window that was used a little still shows a sliver of the bar.
+assert.equal(barWidth(0), '0%')
+assert.equal(barWidth(100), '100%')
+assert.equal(barWidth(0.14), 'max(2px, 0.14%)')
+assert.equal(barWidth(37.5), 'max(2px, 37.50%)')
 
 console.log('format test passed')

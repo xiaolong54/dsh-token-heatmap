@@ -303,14 +303,21 @@ function createPlanProbe(ctx, ledger) {
   /**
    * Ask the providers once and keep the rows that answer.
    *
+   * A route that stopped answering keeps its last known row, but the row is
+   * marked as the last known one so the browser can say so.
+   *
    * @returns {Promise<void>} after the plan rows settled.
    */
   const run = async () => {
     try {
-      const rows = await probePlans(ctx)
+      const answer = await probePlans(ctx)
       // A provider that did not answer keeps its last known row.
       const merged = new Map(ledger.plans.map(plan => [plan.id, plan]))
-      for (const row of rows) merged.set(row.id, row)
+      for (const row of answer.plans) merged.set(row.id, { ...row, stale: false })
+      for (const routeId of answer.failed) {
+        const known = merged.get(`plan-${routeId}`)
+        if (known !== undefined) merged.set(known.id, { ...known, stale: true })
+      }
       ledger.plans = [...merged.values()]
       ledger.plansAt = Date.now()
       await saveLedger(ledger, ledger.path)

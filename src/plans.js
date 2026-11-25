@@ -6,7 +6,7 @@
  * one shows them all at once.
  */
 
-import { remainingSpan, resetTime, spanText } from './format.js'
+import { barWidth, remainingPercent, remainingSpan, resetTime, spanText } from './format.js'
 
 /**
  * One window of one plan: its name, what is left of it and its bar.
@@ -20,15 +20,17 @@ export function PlanWindowRow(props) {
   const { planWindow, t } = props
   const resets = resetTime(planWindow.resetsAt, true)
   const span = spanText(remainingSpan(planWindow.resetsAt), t)
-  const note = span === ''
+  const resetNote = span === ''
     ? (resets === '' ? null : t('resetsAt', { time: resets }))
     : t('resetsIn', { span, time: resets })
+  const notes = [planWindow.detail, resetNote].filter(part => part !== undefined && part !== null)
   return h('div', { className: 'thm-window' },
     h('div', { className: 'thm-window-head' },
       h('span', { className: 'thm-window-name' }, planWindow.name),
-      h('span', { className: 'thm-window-value' }, t('windowRemaining', { percent: Math.round(planWindow.remaining) }))),
-    h('div', { className: 'thm-window-bar' }, h('i', { style: { width: `${Math.round(planWindow.used)}%` } })),
-    note === null ? null : h('div', { className: 'thm-plan-note' }, note))
+      h('span', { className: 'thm-window-value' },
+        t('windowRemaining', { percent: remainingPercent(planWindow.remaining) }))),
+    h('div', { className: 'thm-window-bar' }, h('i', { style: { width: barWidth(planWindow.used) } })),
+    notes.length === 0 ? null : h('div', { className: 'thm-plan-note' }, notes.join(' · ')))
 }
 
 /**
@@ -74,5 +76,6 @@ export function PlansCard(props) {
     h('div', { className: 'thm-plan-list' },
       plans.map(plan => h('div', { key: plan.id, className: 'thm-plan-block' },
         h('div', { className: 'thm-plan-block-name', title: plan.label }, plan.label),
+        plan.stale === true ? h('div', { className: 'thm-plan-stale' }, t('planStale')) : null,
         plan.windows.map(planWindow => PlanWindowRow({ planWindow, t }))))))
 }

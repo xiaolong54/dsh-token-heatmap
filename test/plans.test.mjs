@@ -114,10 +114,10 @@ assert.equal(codexWindows[1].name, '周窗口')
 assert.equal(codexWindows[1].used, 70)
 
 // The CommandCode answer: the window limits are credits, the monthly window
-// is the spending of the period over the credit pool.
+// is the plan's allowance against the credits that are left.
 const commandcode = parseCommandcodeWindows(
   {
-    credits: { monthlyCredits: 10, purchasedCredits: 0, freeCredits: 0 },
+    credits: { monthlyCredits: 9.53, purchasedCredits: 0, freeCredits: 0 },
     windowLimits: {
       limited: true,
       fiveHour: { used: 1.5, cap: 3, exceeded: false, resetAt: 1795622400000 },
@@ -125,7 +125,7 @@ const commandcode = parseCommandcodeWindows(
     },
   },
   { data: { planId: 'individual-go-v1', currentPeriodEnd: '2026-12-25T14:44:30.000Z' } },
-  { totalCost: 2.5 },
+  { totalCost: 0.47 },
 )
 assert.equal(commandcode.length, 3, 'the two windows and the monthly pool were read')
 assert.equal(commandcode[0].key, '5h')
@@ -136,10 +136,26 @@ assert.equal(commandcode[0].resetsAt, 1795622400000)
 assert.equal(commandcode[1].key, 'week')
 assert.equal(commandcode[1].used, 100)
 assert.equal(commandcode[1].remaining, 0)
+// The plan has ten credits and 9.53 are left: 4.7 percent is used.
 assert.equal(commandcode[2].key, 'month')
-assert.equal(commandcode[2].used, 25)
+assert.equal(Math.round(commandcode[2].used * 10) / 10, 4.7)
 assert.equal(commandcode[2].resetsAt, Date.parse('2026-12-25T14:44:30.000Z'))
+// The credit amounts travel with the window: a share of a few percent says
+// nothing about how much is left.
+assert.equal(commandcode[0].detail, '$1.50 / $3.00')
+assert.equal(commandcode[1].detail, '$6.00 / $6.00')
+assert.equal(commandcode[2].detail, '$0.47 / $10.00')
 assert.deepEqual(parseCommandcodeWindows(null, null, null), [])
+
+// A plan that is not known: the spending and what is left add up to the pool.
+const unknownPlan = parseCommandcodeWindows(
+  { credits: { monthlyCredits: 6 }, windowLimits: {} },
+  { data: { planId: 'something-new' } },
+  { totalCost: 4 },
+)
+assert.equal(unknownPlan.length, 1, 'the monthly window was read')
+assert.equal(unknownPlan[0].used, 40)
+assert.equal(unknownPlan[0].detail, '$4.00 / $10.00')
 
 // The family follows the route id, or the vendor endpoint behind a custom id.
 assert.equal(planFamily({ id: 'minimax-cn', baseURL: 'https://api.minimaxi.com/anthropic' })?.id, 'minimax')
