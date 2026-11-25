@@ -70,11 +70,11 @@
       "versions": [
         {
           "version": "0.1.0",
-          "publishTimestamp": 1795514676,
+          "publishTimestamp": 1795618793,
           "source": {
             "type": "git",
             "url": "https://github.com/xiaolong54/dsh-token-heatmap",
-            "commit": "e50ba1e05e77df6f499cae1481a6ea0044fc38e2"
+            "commit": "c2d4eb4024c646f94a5f7fc43b7c7c6af9dfc1fe"
           },
           "engines": {
             "dsh": ">=0.2.2-rc.3"
